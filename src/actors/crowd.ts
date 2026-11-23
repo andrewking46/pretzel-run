@@ -6,7 +6,7 @@ import { buildPerson, pose, randomLook, type Person } from './people.ts';
 export type Role = 'phone' | 'camera' | 'map' | 'walker' | 'courier' | 'vendor' | 'stroller';
 
 const STOCK: [Role, number][] = [
-  ['phone', 5], ['camera', 4], ['map', 4], ['walker', 3], ['courier', 3], ['vendor', 2], ['stroller', 7],
+  ['phone', 6], ['camera', 5], ['map', 5], ['walker', 3], ['courier', 3], ['vendor', 2], ['stroller', 7],
 ];
 
 function make(role: Role, variant: number): Person {

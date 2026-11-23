@@ -1,4 +1,5 @@
-// Close-up of Alex (dev check). Usage: node scripts/_closeup.ts out.jpg [head]
+// Close-up render of Alex for checking the character model (needs the dev server on :5173).
+// Usage: node scripts/closeup.ts out.jpg [head]
 import { chromium } from '@playwright/test';
 const head = process.argv[3] === 'head';
 const b = await chromium.launch({ args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });

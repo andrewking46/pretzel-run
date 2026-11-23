@@ -8,10 +8,11 @@ import type { Particles } from '../fx/particles.ts';
 import type { Atlas } from '../world/atlas.ts';
 import { toZ } from '../world/layout.ts';
 import {
-  assemble, carGeometry, cartGeometry, cartSign, cellarGeometry, dogGeometry, ebikeGeometry, ebikeLamp, pigeonGeometry,
+  assemble, carGeometry, cartGeometry, cartSign, cellarGeometry, ebikeGeometry, ebikeLamp, pigeonGeometry,
   plywoodSign, sawhorseGeometry, shedGeometry, shedLights, steamStackGeometry, trashGeometry,
 } from './models.ts';
 import type { Crowd, Role } from './crowd.ts';
+import { buildDog, disposeDog, trot, type Dog } from './dog.ts';
 import { pose, type Motion, type Person } from './people.ts';
 
 // Renders the sim's obstacles near the player: builds a view when one comes into range, animates it,
@@ -174,39 +175,35 @@ export class Obstacles {
         const bike = assemble([[ebikeGeometry(), toy], [ebikeLamp(), glow, false]]);
         root.add(bike);
         const beam = new Sprite(new SpriteMaterial({ map: this.headlightTexture, blending: AdditiveBlending, depthWrite: false, toneMapped: false, opacity: 0.9 }));
-        beam.scale.set(2.2, 1.4, 1);
-        beam.position.set(0, 0.95, 0.85);
+        beam.scale.set(1.1, 0.75, 1);
+        beam.position.set(0, 0.96, 0.78);
         root.add(beam);
         view.person.object.position.set(0, -0.05, -0.15);
         view.animate = t => {
-          beam.material.opacity = 0.7 + 0.25 * Math.sin(t * 9);
+          beam.material.opacity = 0.55 + 0.2 * Math.sin(t * 9);
         };
         break;
       }
       case 'dogs': {
         const n = 2 + Math.floor(o.variant * 2.99);
-        const dogs: Mesh[] = [];
+        const dogs: Dog[] = [];
         for (let i = 0; i < n; i++) {
-          const d = new Mesh(dogGeometry((o.variant * 7.13 + i * 0.37) % 1), toy);
-          d.castShadow = true;
-          d.position.set(-0.4 + (0.8 * i) / Math.max(1, n - 1), 0, (i % 2) * 0.35 - 0.1);
+          const d = buildDog((o.variant * 7.13 + i * 0.37) % 1);
+          d.object.position.set(-0.4 + (0.8 * i) / Math.max(1, n - 1), 0, (i % 2) * 0.35 - 0.1);
+          d.object.rotation.y = (i - (n - 1) / 2) * 0.12;
           dogs.push(d);
-          root.add(d);
+          root.add(d.object);
         }
         const leash = new LineSegments(new BufferGeometry(), new LineBasicMaterial({ color: '#d33' }));
         leash.geometry.setAttribute('position', new BufferAttribute(new Float32Array(n * 6), 3));
         leash.frustumCulled = false;
         root.add(leash);
         root.userData = { dogs, leash };
-        view.animate = t => {
-          dogs.forEach((d, i) => {
-            const k = t * 12 + i * 1.7;
-            d.position.y = Math.abs(Math.sin(k)) * 0.06;
-            d.rotation.x = Math.sin(k) * 0.08;
-            d.rotation.y = Math.sin(t * 2 + i) * 0.15;
-          });
+        view.animate = t => dogs.forEach((d, i) => trot(d, t + i * 0.37, o.active && !o.hit));
+        view.dispose = () => {
+          leash.geometry.dispose();
+          dogs.forEach(disposeDog);
         };
-        view.dispose = () => leash.geometry.dispose();
         break;
       }
       case 'cart': {
@@ -317,14 +314,14 @@ export class Obstacles {
   }
 
   private layoutLeash(v: View, o: Obstacle, run: Run): void {
-    const { dogs, leash } = v.root.userData as { dogs: Mesh[]; leash: LineSegments };
+    const { dogs, leash } = v.root.userData as { dogs: Dog[]; leash: LineSegments };
     const walker = o.leashedTo !== undefined ? run.course.obstacles[o.leashedTo] : undefined;
     const pos = leash.geometry.attributes.position as BufferAttribute;
     const hx = walker ? walker.x - o.x + (walker.x > o.x ? -0.28 : 0.28) : 0;
     const hz = walker ? -(walker.d - o.d) + 0.15 : 0;
     dogs.forEach((d, i) => {
       pos.setXYZ(i * 2, hx, 0.95, hz);
-      pos.setXYZ(i * 2 + 1, d.position.x, d.position.y + 0.42 * d.scale.y, d.position.z + 0.22);
+      pos.setXYZ(i * 2 + 1, d.object.position.x, 0.44 * d.size, d.object.position.z + 0.22 * d.size);
     });
     pos.needsUpdate = true;
   }

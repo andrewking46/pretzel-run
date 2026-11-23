@@ -61,3 +61,11 @@ Non-obvious choices and why. Newest at the bottom of each section.
 - **Building trim**: stepped cornices with brackets on masonry, pilasters between bays, belt courses over the shops, and rooftop bulkheads, mechanicals and antennas for a broken skyline.
 - **Anti-aliasing on every tier**: native MSAA on Low, FXAA plus the grade pass on Medium, 4× MSAA on High.
 - **No frame stalls from content creation**: city blocks are built a slice at a time within a 2.5 ms per-frame budget (merges compacted incrementally, faster while the express overlay hides the street), and pedestrians come from a pool of ~28 prebuilt people warmed behind the title screen (building one costs ~15 ms on a slow phone). With 4× CPU throttling the phone proxy holds 60 fps with one 33 ms frame per 30 s, the same as before the upgrade; 100–134 draw calls.
+
+## Graphics pass (round 3: people and obstacles)
+
+- **People are continuous, sculpted bodies with smooth skinning.** Torso (seat, hips, waist, chest, shoulders), legs (thigh, knee, calf) and arms (shoulder, elbow, wrist) are each one lathed shape whose vertices blend between two bones around the joint, so bodies bend like bodies instead of a stack of capsules. Clothing is painted by height (trousers, tees with short sleeves, belts, shirt cuffs), coats get a flared skirt, and faces have whites of the eyes, highlights and a small smile. `src/actors/rig.ts` holds the skinning toolkit.
+- **Dogs are skinned too** (one draw call each): body with a chest ruff, snout, nose, eyes, floppy or pointy ears, collar, paws and tail; they trot in a diagonal gait with a wagging tail.
+- **Obstacles rebuilt**: tube-frame e-bike on torus tires with spokes, rack and a smaller headlight halo; cart with a 16-panel scalloped umbrella, sneeze guard, condiments, pretzel rack and propane tank; lumpy glossy trash bags with tied necks; cellar doors that actually stand open over steps going down; flared, capped steam stack; rounded sawhorse with lamps; pigeons with iridescent necks, beaks and wings.
+- **Power-ups**: a thick extruded pizza slice with crust, pepperoni and cheese drips; a sitting orange tabby with ears, green eyes and whiskers; a rounded express card.
+- `node scripts/lineup.ts <dir>` renders close-up lineups of the people, obstacles, power-ups and the e-bike for judging models.

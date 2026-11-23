@@ -6,6 +6,7 @@ import {
 import { AlexView } from './actors/alex.ts';
 import { Coins } from './actors/coins.ts';
 import { Crowd } from './actors/crowd.ts';
+import { buildDog } from './actors/dog.ts';
 import { Obstacles } from './actors/obstacles.ts';
 import { Powerups } from './actors/powerups.ts';
 import { SPEED } from './config/tuning.ts';
@@ -168,6 +169,11 @@ export class Stage {
       o.position.set(0, -50, toZ(this.run?.dist ?? 0) - 10);
       o.castShadow = true;
       g.add(o);
+    }
+    for (let i = 0; i < 5; i++) {
+      const dog = buildDog(i / 5 + 0.01);
+      dog.object.position.set(0, -50, toZ(this.run?.dist ?? 0) - 10);
+      g.add(dog.object);
     }
     this.scene.add(g);
     this.renderer.compile(this.scene, this.rig.camera);
