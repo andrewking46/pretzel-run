@@ -14,7 +14,8 @@
     "build:e2e": "vite build --mode e2e --outDir dist-e2e",
     "test:e2e": "playwright test",
     "screenshots": "node scripts/screenshots.ts",
-    "perf": "node scripts/perf.ts"
+    "perf": "node scripts/perf.ts",
+    "share-image": "node scripts/share-image.ts"
   },
   "engines": {
     "node": ">=24"

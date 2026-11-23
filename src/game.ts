@@ -19,7 +19,7 @@ import { dailySeed, dateLabel, randomSeed, todayKey } from './ui/daily.ts';
 import { Hud } from './ui/hud.ts';
 import { Screens, type Best } from './ui/screens.ts';
 import { settings, type Tier } from './ui/settings.ts';
-import { isTouchDevice, share, shareText } from './ui/share.ts';
+import { gameUrl, isTouchDevice, share, shareText } from './ui/share.ts';
 import { storage } from './ui/storage.ts';
 
 // Ties it all together: the fixed-step loop, the title attract demo, starting/pausing/finishing runs,
@@ -173,7 +173,8 @@ export class Game {
       const r = this.run?.result;
       if (!r) return;
       const text = shareText(r, this.daily ? dateLabel(this.dayKey) : 'Practice', LEVEL2.title);
-      this.screens.shareFeedback(text, await share(text));
+      const url = gameUrl();
+      this.screens.shareFeedback(`${text}\n${url}`, await share(text, url));
     });
   }
 

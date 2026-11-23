@@ -12,18 +12,21 @@ export function shareText(r: RunResult, label: string, route: string): string {
 
 export const isTouchDevice = () => matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
 
-/** Share sheet on phones, clipboard on computers. Returns what happened. */
-export async function share(text: string): Promise<'shared' | 'copied' | 'manual' | 'cancelled'> {
+/** The game's own address, without query or hash, so the link unfurls into the preview card. */
+export const gameUrl = (): string => new URL('./', location.href).href;
+
+/** Share sheet on phones, clipboard on computers. Both carry the link so Messages shows the preview card. */
+export async function share(text: string, url: string): Promise<'shared' | 'copied' | 'manual' | 'cancelled'> {
   if (isTouchDevice() && navigator.share) {
     try {
-      await navigator.share({ text });
+      await navigator.share({ text, url });
       return 'shared';
     } catch (e) {
       if ((e as Error).name === 'AbortError') return 'cancelled';
     }
   }
   try {
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(`${text}\n${url}`);
     return 'copied';
   } catch {
     return 'manual';

@@ -50,6 +50,7 @@ Non-obvious choices and why. Newest at the bottom of each section.
 - **Alex wears a navy suit, white shirt, red tie and brown dress shoes**, with brown hair, brown eyes and fair skin (he works in finance).
 - **Today's Run uses New York's date** (`America/New_York`), so relatives in other time zones get the same route on the same day.
 - **Share sheet on phones, clipboard on computers.** Desktop browsers also expose `navigator.share`, which would turn "Copy for the group chat" into a share sheet on a Mac.
+- **Shares carry the link.** The share sheet gets the game's URL as its own field and the clipboard gets it on the last line, so Messages turns it into the preview card instead of sending bare text.
 - **Control hint only on the first run**, worded for the device you're using.
 - **No real brands**: see CREDITS.md.
 
@@ -69,3 +70,11 @@ Non-obvious choices and why. Newest at the bottom of each section.
 - **Obstacles rebuilt**: tube-frame e-bike on torus tires with spokes, rack and a smaller headlight halo; cart with a 16-panel scalloped umbrella, sneeze guard, condiments, pretzel rack and propane tank; lumpy glossy trash bags with tied necks; cellar doors that actually stand open over steps going down; flared, capped steam stack; rounded sawhorse with lamps; pigeons with iridescent necks, beaks and wings.
 - **Power-ups**: a thick extruded pizza slice with crust, pepperoni and cheese drips; a sitting orange tabby with ears, green eyes and whiskers; a rounded express card.
 - `node scripts/lineup.ts <dir>` renders close-up lineups of the people, obstacles, power-ups and the e-bike for judging models.
+
+## Link preview and icons
+
+- **The preview image is a staged in-game render, not an illustration**, so it shows what you'll actually play. `scripts/share-image.ts` freezes a seeded run, holds Alex mid-leap at the top of a cash arc in Times Square, turns the camera around to face him, swings the sun behind the camera so it lights his face, and keeps the blocks he's already run (the game normally drops them). The title is the in-game street sign in HTML on top. It renders at 2× and downsamples to 1200×630 JPEG (about 130 KB, under WhatsApp's 300 KB limit).
+- **Title on two lines, big.** Messages shows the card around 300 pt wide on a phone, where a one-line sign was too small to read.
+- **Coins near the lens are hidden in the shot.** Up close they read as flat gray discs; the $1 bill Alex reaches for stays, turned to face the camera.
+- **Icon: a pretzel on a street-sign-green square** with the sign's white border, drawn from the same rope curve as the HUD pretzel (`src/ui/icons.ts`), with the arms crossing over and under. It's deliberately not the pretzel-chain's blue and gold or its haloed pretzel. Full-bleed variants go to iOS (which rounds its own corners) and Android's maskable slot.
+- **Absolute URLs are hard-coded in `index.html`** (canonical, `og:url`, `og:image`). Messengers ignore relative image URLs, and a build-time variable would be one more thing to forget. A test checks they agree, that the image matches its declared size and weight, and that every linked icon exists.
