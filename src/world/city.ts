@@ -334,7 +334,9 @@ export class City {
     const xl = Math.min(x0, x1);
     const xr = Math.max(x0, x1);
     // face the camera (+z) and the other way; the sign material is double-sided
+    // lettered on both faces, like the real thing
     k.signs.quad([[xl, y0, z], [xr, y0, z], [xr, y1, z], [xl, y1, z]], { uv: [[u0, v1], [u1, v1], [u1, v0], [u0, v0]], color: [[1, 1, 1]] });
+    k.signs.quad([[xr, y0, z - 0.02], [xl, y0, z - 0.02], [xl, y1, z - 0.02], [xr, y1, z - 0.02]], { uv: [[u0, v1], [u1, v1], [u1, v0], [u0, v0]], color: [[1, 1, 1]] });
   }
 
   private fireEscape(k: ChunkKit, rng: Rng, X: number, out: number, b: Building): void {
@@ -602,8 +604,10 @@ export class City {
     k.toy.cylinder(0.06, 0.07, 3.9, '#5b6260', { x: sx, y: 1.95, z: sz }, 6);
     const [a0, b0, a1, b1] = this.atlas.uv(`street:${it.street}`);
     k.signs.quad([[sx - 0.85, 3.55, sz + 0.05], [sx + 0.85, 3.55, sz + 0.05], [sx + 0.85, 3.98, sz + 0.05], [sx - 0.85, 3.98, sz + 0.05]], { uv: [[a0, b1], [a1, b1], [a1, b0], [a0, b0]], color: [[1, 1, 1]] });
+    k.signs.quad([[sx + 0.85, 3.55, sz + 0.03], [sx - 0.85, 3.55, sz + 0.03], [sx - 0.85, 3.98, sz + 0.03], [sx + 0.85, 3.98, sz + 0.03]], { uv: [[a0, b1], [a1, b1], [a1, b0], [a0, b0]], color: [[1, 1, 1]] });
     const [c0, e0, c1, e1] = this.atlas.uv('street:avenue');
     k.signs.quad([[sx + 0.05, 3.08, sz + 0.5], [sx + 0.05, 3.08, sz - 0.5], [sx + 0.05, 3.42, sz - 0.5], [sx + 0.05, 3.42, sz + 0.5]], { uv: [[c0, e1], [c1, e1], [c1, e0], [c0, e0]], color: [[1, 1, 1]] });
+    k.signs.quad([[sx + 0.03, 3.08, sz - 0.5], [sx + 0.03, 3.08, sz + 0.5], [sx + 0.03, 3.42, sz + 0.5], [sx + 0.03, 3.42, sz - 0.5]], { uv: [[c0, e1], [c1, e1], [c1, e0], [c0, e0]], color: [[1, 1, 1]] });
     k.toy.box(0.42, 0.46, 0.26, '#222', { x: sx + 0.35, y: 2.6, z: sz });
     k.signals.push({ matrix: new Matrix4().makeTranslation(sx + 0.35, 2.6, sz + 0.14), phase: rng.range(0, 14) });
 
