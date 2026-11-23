@@ -1,6 +1,6 @@
 # Credits
 
-Everything you see and hear is made in code: buildings, people, Alex, vehicles, signs, coins, sky and every sound effect and note of music are generated at runtime. No third-party models, textures or audio are bundled. The link-preview image and the app icons in `public/` are rendered from the game itself by `scripts/share-image.ts`.
+Everything you see and hear is made in code: buildings, people, Alex, vehicles, signs, coins, sky and every sound effect and note of music are generated at runtime. No third-party models, textures or audio are bundled. The link-preview illustration and the app icons in `public/` are drawn in code (`scripts/share-art.ts`) and rendered by `scripts/share-image.ts`.
 
 ## Runtime
 

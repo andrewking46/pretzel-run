@@ -85,7 +85,7 @@ Outputs a static site in `dist/` (relative paths, so it works under any subpath)
 - **Gameplay numbers:** `src/config/tuning.ts`.
 - **The route:** `src/config/levels/level2.ts` (streets, Times Square, pattern weights, power-up schedule). Levels are data; the engine never names one.
 - **Speech bubbles and quips:** `src/config/copy.ts`.
-- **Link preview and icons:** `npm run share-image` re-renders `public/og.jpg` (the card that shows when the link is texted) from a staged in-game shot, plus the pretzel icons. Rerun it after changing how Alex or the city looks. If you deploy somewhere other than `andrewking46.github.io/pretzel-run/`, change the absolute URLs in the `og:` tags and the canonical link in `index.html`, since link previews need absolute URLs.
+- **Link preview and icons:** the card that shows when the link is texted is an illustration drawn in `scripts/share-art.ts`. `npm run share-image` renders it to `public/og.jpg` along with the pretzel icons; bump the `?v=` on `og:image` in `index.html` when the picture changes. If you deploy somewhere other than `andrewking46.github.io/pretzel-run/`, change the absolute URLs in the `og:` tags and the canonical link in `index.html`, since link previews need absolute URLs.
 
 ## Layout
 

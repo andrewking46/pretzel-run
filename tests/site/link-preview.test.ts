@@ -8,8 +8,8 @@ const html = readFileSync('index.html', 'utf8');
 const meta = (key: string) => html.match(new RegExp(`<meta (?:property|name)="${key}" content="([^"]*)"`))?.[1];
 const link = (rel: string) => [...html.matchAll(new RegExp(`<link rel="${rel}" href="([^"]*)"`, 'g'))].map(m => m[1]);
 
-/** the public/ file behind an absolute URL on the site */
-const publicFile = (url: string) => `public/${url.slice(meta('og:url')!.length)}`;
+/** the public/ file behind an absolute URL on the site (a ?v= cache-buster is fine) */
+const publicFile = (url: string) => `public/${url.slice(meta('og:url')!.length).split('?')[0]}`;
 
 function pngSize(file: string): [number, number] {
   const b = readFileSync(file);
