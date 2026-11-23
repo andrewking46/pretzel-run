@@ -14,7 +14,7 @@ export const sharedUniforms = {
 
 /** Low-poly props, vehicles, people: flat-shaded with baked vertex colors. */
 export function toyMaterial(): MeshStandardMaterial {
-  return new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.82, metalness: 0 });
+  return new MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0 });
 }
 
 /** Things that give off light: bulbs, globes, headlights, signals. Unlit, bloom-bright. */
@@ -42,28 +42,93 @@ export function haloMaterial(): MeshBasicMaterial {
 }
 
 const FACADE_GLSL = /* glsl */ `
+uniform float uWindowGlow;
+varying vec2 vFacadeUv;
+varying vec4 vFacade;
+varying vec3 vFacadeWorld;
+varying vec3 vFacadeNormal;
 float fhash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+// bump from a procedural height (meters), via screen-space derivatives
+vec3 facadePerturb(vec3 surfPos, vec3 surfNorm, float h, float fd) {
+  vec2 dh = vec2(dFdx(h), dFdy(h));
+  vec3 sx = dFdx(surfPos);
+  vec3 sy = dFdy(surfPos);
+  vec3 r1 = cross(sy, surfNorm);
+  vec3 r2 = cross(surfNorm, sx);
+  float det = dot(sx, r1) * fd;
+  vec3 grad = sign(det) * (dh.x * r1 + dh.y * r2);
+  return normalize(abs(det) * surfNorm - grad);
+}
+
+// Interior mapping: the room behind a window opening of 'size' meters, 'depth' deep, seen along v
+// (v in window space: x along the facade, y up, z into the building). Returns its color.
+vec3 room(vec2 local, vec2 size, float depth, vec3 v, float lit, float seed, float shop) {
+  vec3 o = vec3(local, 0.0);
+  float tx = v.x > 0.0 ? (size.x - o.x) / v.x : o.x / max(-v.x, 1e-4);
+  float ty = v.y > 0.0 ? (size.y - o.y) / v.y : o.y / max(-v.y, 1e-4);
+  float tz = depth / max(v.z, 1e-4);
+  float t = min(tz, min(tx, ty));
+  vec3 hp = o + v * t;
+  vec3 warm = mix(vec3(1.0, 0.74, 0.46), vec3(1.0, 0.92, 0.76), fhash(vec2(seed, 7.0)));
+  vec3 cool = mix(vec3(0.82, 0.9, 1.0), vec3(1.0, 0.95, 0.85), fhash(vec2(seed, 9.0)));
+  vec3 light = mix(warm, cool, step(0.7, fhash(vec2(seed, 2.0))) * (1.0 - shop));
+  vec3 base = mix(vec3(0.035, 0.04, 0.055), light, lit);
+  float z = clamp(hp.z / depth, 0.0, 1.0);
+  vec3 col;
+  if (t == tz) {
+    col = base * 0.85;
+    if (shop > 0.5) {
+      // the counter and the menu board
+      col *= 1.0 - 0.55 * step(hp.y, size.y * 0.3);
+      col = mix(col, vec3(0.15, 0.1, 0.08) + light * 0.3, step(abs(hp.x - size.x * 0.5), size.x * 0.3) * step(abs(hp.y - size.y * 0.72), size.y * 0.1));
+    } else {
+      float desk = step(hp.y, size.y * 0.3) * step(size.x * 0.15, hp.x) * step(hp.x, size.x * 0.75);
+      col *= 1.0 - 0.5 * desk;
+      float art = step(abs(hp.x - size.x * (0.3 + 0.4 * fhash(vec2(seed, 4.0)))), size.x * 0.13) * step(abs(hp.y - size.y * 0.62), size.y * 0.11);
+      col = mix(col, col * vec3(0.55, 0.7, 1.0) + 0.02, art * 0.7);
+    }
+  } else if (t == ty) {
+    col = v.y > 0.0 ? base * (1.0 + 0.6 * lit) : base * vec3(0.42, 0.34, 0.28);
+  } else {
+    col = base * mix(0.62, 0.3, shop);
+    if (shop > 0.5) {
+      // shelves stocked with colorful stuff along the side walls
+      float shelf = step(0.88, fract(hp.y * 2.6));
+      float goods = step(0.35, fract(hp.z * 7.0 + floor(hp.y * 2.6) * 0.37)) * (1.0 - shelf) * step(hp.y, size.y * 0.78) * step(0.15, fract(hp.y * 2.6));
+      vec3 hue = 0.5 + 0.4 * cos(6.2831 * (fhash(vec2(floor(hp.z * 7.0), floor(hp.y * 2.6))) + vec3(0.0, 0.33, 0.67)));
+      col = mix(col, col * mix(vec3(1.0), hue, 0.45), goods * 0.3);
+      col *= 1.0 - 0.45 * shelf;
+    }
+  }
+  return col * mix(1.0, 0.55, z);
+}
 `;
 
 /**
- * Building facades with procedural windows. Per-vertex:
+ * Building facades, fully procedural (no textures). Per-vertex:
  *  facadeUv = (meters along the facade, meters above the sidewalk)
  *  facade   = (style, seed, lit fraction, storefront height)
  * Styles: 0 pre-war brick, 1 limestone, 2 glass curtain wall, 3 ribbon windows, 4 roof/blank, 5 Penn glass.
+ * Windows are recessed (bump), glass reflects the sky (low roughness + environment), and behind each pane
+ * is a little 3D room (interior mapping). `detail` off = the cheap version for the Low tier.
  */
-export function facadeMaterial(): MeshStandardMaterial {
-  const mat = new MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0 });
+export function facadeMaterial(detail = true): MeshStandardMaterial {
+  const mat = new MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
+  if (detail) mat.defines = { FACADE_DETAIL: '' };
   mat.onBeforeCompile = shader => {
     shader.uniforms.uWindowGlow = sharedUniforms.uWindowGlow;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec2 facadeUv;\nattribute vec4 facade;\nvarying vec2 vFacadeUv;\nvarying vec4 vFacade;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFacadeUv = facadeUv;\nvFacade = facade;');
+      .replace('#include <common>', '#include <common>\nattribute vec2 facadeUv;\nattribute vec4 facade;\nvarying vec2 vFacadeUv;\nvarying vec4 vFacade;\nvarying vec3 vFacadeWorld;\nvarying vec3 vFacadeNormal;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFacadeUv = facadeUv;\nvFacade = facade;\nvFacadeWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvFacadeNormal = normalize(mat3(modelMatrix) * objectNormal);');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nuniform float uWindowGlow;\nvarying vec2 vFacadeUv;\nvarying vec4 vFacade;\n${FACADE_GLSL}`)
+      .replace('#include <common>', `#include <common>\n${FACADE_GLSL}`)
       .replace(
         '#include <color_fragment>',
         /* glsl */ `#include <color_fragment>
         vec3 facadeEmissive = vec3(0.0);
+        float facadeH = 0.0;
+        float facadeRough = 0.9;
         {
           vec3 wall = diffuseColor.rgb;
           float style = vFacade.x;
@@ -71,26 +136,35 @@ export function facadeMaterial(): MeshStandardMaterial {
           float litFrac = vFacade.z;
           float gf = vFacade.w;
           vec2 p = vFacadeUv;
+          vec3 N = normalize(vFacadeNormal);
+          vec3 T = normalize(dFdx(vFacadeWorld) * dFdy(p.y) - dFdy(vFacadeWorld) * dFdx(p.y));
+          vec3 Vw = normalize(vFacadeWorld - cameraPosition);
+          vec3 v = vec3(dot(Vw, T), Vw.y, -dot(Vw, N));
+          float near = 1.0 - smoothstep(0.015, 0.06, fwidth(p.x));
+          // soft grime toward the sidewalk and a little sun-fade up high
+          wall *= mix(0.72, 1.0, smoothstep(0.0, 4.0, p.y)) * mix(1.0, 1.06, smoothstep(10.0, 60.0, p.y));
           vec3 col = wall;
           if (style > 3.5 && style < 4.5) {
             col = wall;
           } else if (p.y < gf) {
-            // storefront: big lit windows between dark mullions, a sign band above
+            // storefront: recessed panes onto deep, lit shops; sign band above
             float bay = 2.9;
             float bi = floor(p.x / bay);
-            float bx = fract(p.x / bay);
-            float pane = step(0.07, bx) * step(bx, 0.93) * step(0.45, p.y) * step(p.y, gf - 1.0);
-            float door = step(fhash(vec2(bi, seed)), 0.3) * step(0.3, bx) * step(bx, 0.7) * step(p.y, gf - 1.0);
-            vec3 inside = mix(vec3(1.0, 0.62, 0.32), vec3(0.95, 0.84, 0.6), fhash(vec2(bi * 3.1, seed)));
-            float glass = max(pane, door);
-            // a lit interior: brighter toward the ceiling, darker shelf bands and shoppers' silhouettes
-            float depth = smoothstep(0.4, gf - 1.0, p.y);
-            float shelves = step(0.55, fract(p.y * 1.6)) * step(p.y, 2.2) * 0.45;
-            float shopper = step(0.75, fhash(vec2(floor(p.x / 0.7), seed + 9.0))) * step(p.y, 1.9) * step(0.6, p.y) * 0.6;
-            vec3 room = inside * (0.35 + 0.65 * depth) * (1.0 - shelves) * (1.0 - shopper);
-            col = mix(wall * 0.35, room * 0.35, glass);
-            col = mix(col, vec3(0.08, 0.07, 0.07), step(gf - 1.0, p.y) * step(p.y, gf - 0.15));
-            facadeEmissive = room * glass * (0.32 + 0.2 * fhash(vec2(bi, seed + 4.0)));
+            vec2 cell = vec2(fract(p.x / bay) * bay, p.y);
+            vec2 lo = vec2(0.18, 0.45);
+            vec2 hi = vec2(bay - 0.18, gf - 1.0);
+            float pane = step(lo.x, cell.x) * step(cell.x, hi.x) * step(lo.y, cell.y) * step(cell.y, hi.y);
+            float shopSeed = seed * 13.0 + bi;
+            vec3 inside = room(cell - lo, hi - lo, 6.0, v, 0.8 + 0.2 * fhash(vec2(shopSeed, 1.0)), shopSeed, 1.0);
+            float mull = step(abs(cell.x - bay * 0.5), 0.03) * step(fhash(vec2(bi, seed)), 0.5);
+            float band = step(gf - 1.0, p.y) * step(p.y, gf - 0.12);
+            col = mix(wall * 0.55, vec3(0.03), pane);
+            col = mix(col, vec3(0.12, 0.12, 0.13), mull * pane);
+            col = mix(col, wall * 0.3 + vec3(0.02), band);
+            float F = 0.04 + 0.96 * pow(1.0 - clamp(v.z, 0.0, 1.0), 3.0);
+            facadeEmissive = inside * pane * (1.0 - mull) * (1.0 - F) * 0.5;
+            facadeRough = mix(0.85, 0.06, pane);
+            facadeH = -0.12 * pane + 0.03 * band;
           } else {
             float fh = style > 4.5 ? 4.6 : style > 2.5 ? 3.6 : 3.4;
             float fy = (p.y - gf) / fh;
@@ -99,31 +173,59 @@ export function facadeMaterial(): MeshStandardMaterial {
             float bw = style < 0.5 ? 2.5 : style < 1.5 ? 3.0 : style < 2.5 ? 1.55 : style < 3.5 ? 2.2 : 3.2;
             float bi = floor(p.x / bw);
             float lx = fract(p.x / bw);
-            float win;
-            if (style < 0.5) win = step(0.24, lx) * step(lx, 0.76) * step(0.24, ly) * step(ly, 0.8);
-            else if (style < 1.5) win = step(0.27, lx) * step(lx, 0.73) * step(0.16, ly) * step(ly, 0.84);
-            else if (style < 2.5) win = step(0.05, lx) * step(lx, 0.95) * step(0.06, ly) * step(ly, 0.97);
-            else if (style < 3.5) win = step(0.02, lx) * step(lx, 0.98) * step(0.34, ly) * step(ly, 0.86);
-            else win = step(0.04, lx) * step(lx, 0.96) * step(0.05, ly) * step(ly, 0.95);
+            vec2 wlo = style < 0.5 ? vec2(0.24, 0.24) : style < 1.5 ? vec2(0.27, 0.16) : style < 2.5 ? vec2(0.05, 0.06) : style < 3.5 ? vec2(0.02, 0.34) : vec2(0.04, 0.05);
+            vec2 whi = style < 0.5 ? vec2(0.76, 0.8) : style < 1.5 ? vec2(0.73, 0.84) : style < 2.5 ? vec2(0.95, 0.97) : style < 3.5 ? vec2(0.98, 0.86) : vec2(0.96, 0.95);
+            float win = step(wlo.x, lx) * step(lx, whi.x) * step(wlo.y, ly) * step(ly, whi.y);
             float h = fhash(vec2(bi + seed * 61.0, fi + seed * 13.0));
             float lit = step(h, litFrac);
-            vec3 sky = mix(vec3(0.28, 0.36, 0.50), vec3(0.62, 0.72, 0.86), clamp(p.y / 90.0, 0.0, 1.0));
-            vec3 glassCol = mix(sky * 0.75, sky, fhash(vec2(bi, fi)) * 0.6);
-            if (style > 1.5 && style < 2.5) glassCol = mix(vec3(0.35, 0.48, 0.60), vec3(0.75, 0.82, 0.88), clamp(p.y / 70.0 + h * 0.2, 0.0, 1.0));
+            #ifdef FACADE_DETAIL
+              // masonry: running-bond brick or rusticated stone, fading out with distance
+              if (style < 0.5) {
+                float row = floor(p.y / 0.075);
+                float bx = p.x / 0.23 + 0.5 * mod(row, 2.0);
+                float mortar = max(step(fract(p.y / 0.075), 0.16), step(fract(bx), 0.06));
+                vec3 brick = wall * (0.86 + 0.24 * fhash(vec2(floor(bx), row)));
+                col = mix(wall, mix(brick, wall * 1.35 + 0.05, mortar), near);
+                facadeH -= 0.006 * mortar * near;
+              } else if (style < 1.5) {
+                float course = step(fract(p.y / 0.62), 0.05) + step(fract(p.x / 1.24 + 0.5 * mod(floor(p.y / 0.62), 2.0)), 0.025) * 0.6;
+                col = wall * (1.0 - 0.18 * course * near) * (0.95 + 0.08 * fhash(vec2(floor(p.x / 1.24), floor(p.y / 0.62))));
+                facadeH -= 0.01 * course * near;
+              }
+            #endif
+            vec2 wsize = vec2((whi.x - wlo.x) * bw, (whi.y - wlo.y) * fh);
+            vec2 local = vec2((lx - wlo.x) * bw, (ly - wlo.y) * fh);
+            float F = 0.04 + 0.96 * pow(1.0 - clamp(v.z, 0.0, 1.0), 5.0);
             vec3 warm = mix(vec3(1.0, 0.74, 0.42), vec3(1.0, 0.9, 0.7), fract(h * 7.0));
-            vec3 w = mix(glassCol, warm * 0.75, lit);
-            // sills and lintels give brick and limestone some depth
-            float sill = (1.0 - win) * step(style, 1.5) * (step(0.18, ly) * step(ly, 0.24) + step(0.8, ly) * step(ly, 0.85)) * step(0.2, lx) * step(lx, 0.8);
-            col = mix(wall, w, win);
-            col = mix(col, wall * 1.25 + 0.06, sill * 0.8);
-            col *= 1.0 - 0.1 * step(ly, 0.05) * (1.0 - win);
-            facadeEmissive = warm * lit * win * 0.5 * uWindowGlow;
+            #ifdef FACADE_DETAIL
+              vec3 inside = room(local, wsize, 3.6, v, lit, h * 97.0 + seed, 0.0);
+            #else
+              vec3 inside = mix(vec3(0.03, 0.035, 0.05), warm * 0.8, lit);
+            #endif
+            // frames, sills and lintels; glass curtain walls get spandrel panels at each slab
+            float frame = win * (1.0 - step(wlo.x + 0.035 / bw, lx) * step(lx, whi.x - 0.035 / bw) * step(wlo.y + 0.035 / fh, ly) * step(ly, whi.y - 0.035 / fh));
+            float sill = (1.0 - win) * step(style, 1.5) * step(wlo.y - 0.06, ly) * step(ly, wlo.y) * step(wlo.x - 0.03, lx) * step(lx, whi.x + 0.03);
+            float lintel = (1.0 - win) * step(style, 1.5) * step(whi.y, ly) * step(ly, whi.y + 0.05) * step(wlo.x - 0.03, lx) * step(lx, whi.x + 0.03);
+            float spandrel = step(1.5, style) * step(style, 2.5) * (1.0 - win);
+            float glass = win * (1.0 - frame);
+            col = mix(col, wall * 1.2 + 0.05, (sill + lintel) * 0.85);
+            col = mix(col, vec3(0.08, 0.1, 0.13), spandrel);
+            col = mix(col, vec3(0.13, 0.13, 0.14), frame);
+            col = mix(col, vec3(0.02), glass);
+            facadeEmissive = inside * glass * (1.0 - F) * mix(0.35, 1.0, lit) * uWindowGlow;
+            facadeRough = mix(mix(0.9, 0.3, spandrel), 0.05, glass);
+            facadeH += -0.1 * win + 0.04 * frame + 0.05 * (sill + lintel);
+            col *= 1.0 - 0.1 * step(ly, 0.04) * (1.0 - win) * step(style, 1.5);
           }
+          facadeH *= near;
           diffuseColor.rgb = col;
         }`,
       )
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = facadeRough;')
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n#ifdef FACADE_DETAIL\nnormal = facadePerturb(-vViewPosition, normal, facadeH, faceDirection);\n#endif')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += facadeEmissive;');
   };
+  mat.customProgramCacheKey = () => `facade-${detail ? 'detail' : 'simple'}`;
   return mat;
 }
 

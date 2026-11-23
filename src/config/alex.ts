@@ -18,7 +18,7 @@ export const ALEX_LOOK = {
   dressShoes: true,
   glasses: false,
   /** a little big-headed, so he reads from behind */
-  headScale: 1.32,
+  headScale: 1.3,
   height: 1.8,
 };
 

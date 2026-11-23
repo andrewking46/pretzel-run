@@ -1,10 +1,11 @@
 import {
   ACESFilmicToneMapping, AdditiveBlending, BoxGeometry, Color, DirectionalLight, Fog, Group, HemisphereLight, InstancedMesh, Mesh,
-  PlaneGeometry, Sprite, SpriteMaterial, PCFShadowMap, PCFSoftShadowMap, Scene,
+  PlaneGeometry, PMREMGenerator, Sprite, SpriteMaterial, PCFShadowMap, PCFSoftShadowMap, Scene,
   SRGBColorSpace, Vector3, WebGLRenderer, type Material,
 } from 'three';
 import { AlexView } from './actors/alex.ts';
 import { Coins } from './actors/coins.ts';
+import { Crowd } from './actors/crowd.ts';
 import { Obstacles } from './actors/obstacles.ts';
 import { Powerups } from './actors/powerups.ts';
 import { SPEED } from './config/tuning.ts';
@@ -17,7 +18,7 @@ import { buildAtlas, type Atlas } from './world/atlas.ts';
 import { City, PENN_DOOR } from './world/city.ts';
 import { groundHeight, toZ } from './world/layout.ts';
 import { billboardMaterial, glowMaterial, sharedUniforms, signMaterial, toyMaterial } from './world/materials.ts';
-import { HAZE, Sky } from './world/sky.ts';
+import { canyonEnvironment, HAZE, Sky } from './world/sky.ts';
 import { Traffic } from './world/traffic.ts';
 
 // The 3D view: renderer, lights, camera, sky, and the per-run world (city, traffic, obstacles, cash,
@@ -41,11 +42,12 @@ export class Stage {
   readonly scene = new Scene();
   readonly rig = new CameraRig();
   readonly particles = new Particles();
+  readonly crowd = new Crowd();
   readonly alex: AlexView;
   readonly atlas: Atlas;
   readonly sun = new DirectionalLight('#ffd2a0', 2.6);
   readonly mats: { toy: Material; glow: Material; sign: Material };
-  private readonly hemi = new HemisphereLight('#bcd4f2', '#8a6a4a', 1.35);
+  private readonly hemi = new HemisphereLight('#bcd4f2', '#8a6a4a', 0.55);
   private readonly sky: Sky;
   private readonly post: Post;
   private world: World | null = null;
@@ -55,7 +57,7 @@ export class Stage {
   time = 0;
 
   constructor(container: HTMLElement) {
-    this.renderer = new WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false });
+    this.renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance', stencil: false });
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
@@ -83,6 +85,13 @@ export class Stage {
 
     this.sky = new Sky(SUN_OFFSET.clone());
     this.scene.add(this.sky.group);
+    // Image-based light from the golden-hour sky: glass reflects it, metal shines, shadows aren't flat gray.
+    const envScene = new Scene();
+    envScene.add(canyonEnvironment(SUN_OFFSET.clone()));
+    const pmrem = new PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(envScene, 0.02, 1, 1500, { size: 128 }).texture;
+    this.scene.environmentIntensity = 0.75;
+    pmrem.dispose();
     this.scene.add(this.particles.soft.points, this.particles.glow.points);
     this.alex = new AlexView(this.mats.toy);
     this.scene.add(this.alex.root);
@@ -132,9 +141,9 @@ export class Stage {
   /** Tear down the previous run's world and build this one's. */
   load(run: Run): void {
     this.unload();
-    const city = new City(run.course, this.atlas);
-    const traffic = new Traffic(run.course, this.mats.toy, this.mats.glow);
-    const obstacles = new Obstacles(this.mats, this.atlas, this.particles);
+    const city = new City(run.course, this.atlas, this.tier !== 'low');
+    const traffic = new Traffic(run.course, this.mats.toy, this.mats.glow, this.crowd);
+    const obstacles = new Obstacles(this.mats, this.atlas, this.particles, this.crowd);
     const coins = new Coins(run.course.coins);
     const powerups = new Powerups(this.mats.toy);
     this.scene.add(city.group, traffic.group, obstacles.group, coins.group, powerups.group);
@@ -208,12 +217,14 @@ export class Stage {
   frame(dt: number, reducedMotion: boolean): void {
     this.time += dt;
     sharedUniforms.uTime.value = this.time;
+    this.crowd.warm(3);
     const w = this.world;
     if (!w) return;
     const { run } = w;
     const t = this.time;
     const gy = this.ground(run.dist);
-    w.city.update(run.dist, t);
+    // the express overlay hides the street, so use that time to build blocks faster
+    w.city.update(run.dist, t, 330, run.express ? 10 : 2.5);
     w.traffic.update(run.dist, dt);
     w.obstacles.update(run, dt, t, this.ground);
     this.alex.update(run, dt, t, gy, this.particles, reducedMotion);

@@ -1,5 +1,6 @@
 import { HalfFloatType, Vector2, WebGLRenderTarget, type Camera, type Scene, type WebGLRenderer } from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
@@ -61,7 +62,8 @@ export class Post {
     this.bloom = new UnrealBloomPass(new Vector2(width * scale, height * scale), tier === 'high' ? 0.55 : 0.45, 0.5, 0.92);
     composer.addPass(this.bloom);
     composer.addPass(new OutputPass());
-    if (tier === 'high') composer.addPass(new ShaderPass(GradeShader));
+    composer.addPass(new ShaderPass(GradeShader));
+    if (tier === 'medium') composer.addPass(new FXAAPass());
     composer.setSize(width, height);
     this.composer = composer;
   }

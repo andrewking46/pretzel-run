@@ -11,7 +11,8 @@ import {
   assemble, carGeometry, cartGeometry, cartSign, cellarGeometry, dogGeometry, ebikeGeometry, ebikeLamp, pigeonGeometry,
   plywoodSign, sawhorseGeometry, shedGeometry, shedLights, steamStackGeometry, trashGeometry,
 } from './models.ts';
-import { buildPerson, disposePerson, pose, randomLook, type Motion, type Person } from './people.ts';
+import type { Crowd, Role } from './crowd.ts';
+import { pose, type Motion, type Person } from './people.ts';
 
 // Renders the sim's obstacles near the player: builds a view when one comes into range, animates it,
 // sends knocked ones tumbling, and drops views once they're behind and settled.
@@ -31,6 +32,7 @@ interface Tumble {
 interface View {
   root: Group;
   person?: Person;
+  role?: Role;
   motion: Motion;
   phase: number;
   head: number;
@@ -53,7 +55,10 @@ export class Obstacles {
   private readonly headlightTexture = radialTexture('rgba(255,250,210,1)', 'rgba(255,240,180,0)');
   private readonly m = new Matrix4();
 
-  constructor(mats: ObstacleMaterials, atlas: Atlas, particles: Particles) {
+  private readonly crowd: Crowd;
+
+  constructor(mats: ObstacleMaterials, atlas: Atlas, particles: Particles, crowd: Crowd) {
+    this.crowd = crowd;
     this.mats = mats;
     this.atlas = atlas;
     this.particles = particles;
@@ -123,13 +128,14 @@ export class Obstacles {
     const v = this.views.get(id);
     if (!v) return;
     this.group.remove(v.root);
-    if (v.person) disposePerson(v.person);
+    if (v.person && v.role) this.crowd.release(v.role, v.person);
     v.dispose?.();
     this.views.delete(id);
   }
 
-  private person(kind: Parameters<typeof randomLook>[1], o: Obstacle, extra: Partial<ReturnType<typeof randomLook>> = {}): Person {
-    return buildPerson({ ...randomLook(o.variant, kind), ...extra });
+  private person(view: View, role: Role, o: Obstacle): Person {
+    view.role = role;
+    return this.crowd.acquire(role, o.variant);
   }
 
   private create(o: Obstacle): View {
@@ -138,13 +144,13 @@ export class Obstacles {
     const { toy, glow, sign } = this.mats;
     switch (o.type) {
       case 'zombie': {
-        view.person = this.person('local', o, { phone: true });
+        view.person = this.person(view, 'phone', o);
         view.motion = 'phone';
         break;
       }
       case 'tourist': {
         const camera = o.pose === 'camera';
-        view.person = this.person('tourist', o, { camera, map: !camera });
+        view.person = this.person(view, camera ? 'camera' : 'map', o);
         view.motion = camera ? 'camera' : 'map';
         if (camera) {
           const flash = new Sprite(new SpriteMaterial({ map: this.flashTexture, blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
@@ -159,11 +165,11 @@ export class Obstacles {
         break;
       }
       case 'walker':
-        view.person = this.person('walker', o);
+        view.person = this.person(view, 'walker', o);
         view.motion = 'walk';
         break;
       case 'ebike': {
-        view.person = this.person('courier', o);
+        view.person = this.person(view, 'courier', o);
         view.motion = 'ride';
         const bike = assemble([[ebikeGeometry(), toy], [ebikeLamp(), glow, false]]);
         root.add(bike);
@@ -205,7 +211,7 @@ export class Obstacles {
       }
       case 'cart': {
         root.add(assemble([[cartGeometry(), toy], [cartSign(this.atlas), sign, false]]));
-        const vendor = this.person('vendor', o);
+        const vendor = this.person(view, 'vendor', o);
         vendor.object.position.set(0.15, 0, -0.8);
         root.add(vendor.object);
         view.person = vendor;

@@ -52,3 +52,12 @@ Non-obvious choices and why. Newest at the bottom of each section.
 - **Share sheet on phones, clipboard on computers.** Desktop browsers also expose `navigator.share`, which would turn "Copy for the group chat" into a share sheet on a Mac.
 - **Control hint only on the first run**, worded for the device you're using.
 - **No real brands**: see CREDITS.md.
+
+## Graphics pass (round 2)
+
+- **Rounded, smooth-shaded everything.** People are built from capsules, spheres and rounded boxes (vinyl-toy look) with faces: brown eyes with highlights, brows, nose, ears, side-parted hair. Vehicles have rounded bodies, glass bands, bumpers and hubcaps; trees are branching trunks with soft leaf clusters; lamps are real cobra-heads. Geometry is merged *indexed*, so smooth shapes cost ~4× fewer vertices than before.
+- **Facades are a single procedural shader** (no textures): running-bond brick and rusticated stone up close (fading with distance to avoid shimmer), recessed windows, frames, sills and lintels via per-pixel bump, glass that reflects the street (low roughness plus environment map, Fresnel), and **interior mapping**: every window shows a small 3D room (lit or dark), every shop a deep lit interior with a counter and shelves. The Low tier gets a cheap variant.
+- **Image-based lighting from a baked "street canyon"**: golden sky above, a ring of lit-window walls at the horizon, pavement below, so glass and metal reflect a street rather than flat haze.
+- **Building trim**: stepped cornices with brackets on masonry, pilasters between bays, belt courses over the shops, and rooftop bulkheads, mechanicals and antennas for a broken skyline.
+- **Anti-aliasing on every tier**: native MSAA on Low, FXAA plus the grade pass on Medium, 4× MSAA on High.
+- **No frame stalls from content creation**: city blocks are built a slice at a time within a 2.5 ms per-frame budget (merges compacted incrementally, faster while the express overlay hides the street), and pedestrians come from a pool of ~28 prebuilt people warmed behind the title screen (building one costs ~15 ms on a slow phone). With 4× CPU throttling the phone proxy holds 60 fps with one 33 ms frame per 30 s, the same as before the upgrade; 100–134 draw calls.

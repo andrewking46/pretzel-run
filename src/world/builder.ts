@@ -1,4 +1,5 @@
-import { BoxGeometry, BufferAttribute, BufferGeometry, Color, ConeGeometry, CylinderGeometry, Euler, IcosahedronGeometry, Matrix4, Quaternion, SphereGeometry, Vector3 } from 'three';
+import { BoxGeometry, BufferAttribute, BufferGeometry, CapsuleGeometry, Color, ConeGeometry, CylinderGeometry, Euler, IcosahedronGeometry, Matrix4, Quaternion, SphereGeometry, Vector3 } from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Accumulates low-poly primitives with baked vertex colors into one merged geometry, so a whole
@@ -13,8 +14,14 @@ const p = new Vector3();
 
 export type ColorLike = string | number | Color;
 
+/** Every part is merged indexed, so smooth shapes keep shared vertices and smooth normals. */
+function indexed(g: BufferGeometry): BufferGeometry {
+  if (!g.index) g.setIndex(Array.from({ length: g.attributes.position.count }, (_, i) => i));
+  return g;
+}
+
 function colorize(g: BufferGeometry, color: ColorLike): BufferGeometry {
-  const geo = g.index ? g.toNonIndexed() : g;
+  const geo = indexed(g);
   geo.deleteAttribute('uv');
   tmpColor.set(color);
   const n = geo.attributes.position.count;
@@ -69,12 +76,22 @@ export class MeshBuilder {
     return this.box(Math.abs(x1 - x0), Math.abs(y1 - y0), Math.abs(z1 - z0), color, { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: (z0 + z1) / 2 });
   }
 
-  cylinder(rTop: number, rBottom: number, h: number, color: ColorLike, at: Place = {}, segments = 8): this {
+  cylinder(rTop: number, rBottom: number, h: number, color: ColorLike, at: Place = {}, segments = 14): this {
     return this.add(new CylinderGeometry(rTop, rBottom, h, segments), color, at);
   }
 
-  cone(r: number, h: number, color: ColorLike, at: Place = {}, segments = 8): this {
+  cone(r: number, h: number, color: ColorLike, at: Place = {}, segments = 12): this {
     return this.add(new ConeGeometry(r, h, segments), color, at);
+  }
+
+  /** Box with softened edges (radius in meters), centred at the placement. */
+  rounded(w: number, h: number, d: number, radius: number, color: ColorLike, at: Place = {}, segments = 2): this {
+    return this.add(new RoundedBoxGeometry(w, h, d, segments, Math.min(radius, w / 2, h / 2, d / 2)), color, at);
+  }
+
+  /** Capsule along y: total height = length + 2r. */
+  capsule(r: number, length: number, color: ColorLike, at: Place = {}, cap = 4, radial = 12): this {
+    return this.add(new CapsuleGeometry(r, length, cap, radial), color, at);
   }
 
   blob(r: number, color: ColorLike, at: Place = {}, detail = 0): this {
@@ -89,6 +106,7 @@ export class MeshBuilder {
   painted(g: BufferGeometry, paint: (triangle: number, centroid: Vector3) => ColorLike, at: Place = {}): this {
     const geo = g.index ? g.toNonIndexed() : g;
     geo.deleteAttribute('uv');
+    indexed(geo);
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
     const c = new Vector3();
@@ -123,6 +141,14 @@ export class MeshBuilder {
       this.parts.push(geo);
     }
     return this;
+  }
+
+  /** Merge what's accumulated so far into a single part (spreads merge work across frames). */
+  compact(): void {
+    if (this.parts.length < 2) return;
+    const merged = mergeGeometries(this.parts, false)!;
+    for (const part of this.parts) part.dispose();
+    this.parts = [merged];
   }
 
   build(): BufferGeometry {

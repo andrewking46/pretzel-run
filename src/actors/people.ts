@@ -1,4 +1,4 @@
-import { Bone, BufferAttribute, Group, MeshStandardMaterial, Skeleton, SkinnedMesh, type BufferGeometry } from 'three';
+import { Bone, BufferAttribute, Group, MeshStandardMaterial, Skeleton, SkinnedMesh, SphereGeometry, type BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshBuilder } from '../world/builder.ts';
 
@@ -47,7 +47,7 @@ export interface Person {
 
 let sharedMaterial: MeshStandardMaterial | null = null;
 export function personMaterial(): MeshStandardMaterial {
-  sharedMaterial ??= new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.8 });
+  sharedMaterial ??= new MeshStandardMaterial({ vertexColors: true, roughness: 0.58 });
   return sharedMaterial;
 }
 
@@ -58,106 +58,117 @@ const SHOULDER = [0.25, 0.47] as const;
 export function buildPerson(look: PersonLook): Person {
   const hs = look.headScale ?? 1;
   const parts: Record<BoneName, MeshBuilder> = Object.fromEntries(BONES.map(b => [b, new MeshBuilder()])) as Record<BoneName, MeshBuilder>;
-  const { skin, hair, top, pants, shoes } = look;
+  const { skin, top, pants, shoes } = look;
   const shoulderY = HIP_Y + SHOULDER[1] + 0.05;
 
-  // hips and torso
-  parts.root.box(0.34, 0.2, 0.23, pants, { y: HIP_Y + 0.02 });
+  // Soft vinyl-toy proportions: capsule limbs, rounded torso, a round head with a face.
+  const sleeveColor = look.topStyle === 'tee' ? skin : top;
   const coat = look.topStyle === 'coat';
-  parts.spine.box(0.4, 0.5, 0.25, top, { y: HIP_Y + 0.3 });
-  parts.spine.box(0.3, 0.1, 0.2, top, { y: HIP_Y + 0.58 });
-  if (coat) parts.spine.box(0.44, 0.34, 0.28, top, { y: HIP_Y - 0.05 });
+  const suit = look.topStyle === 'suit';
+  const shirt = look.shirt ?? '#f4f6fa';
+
+  // hips and torso
+  parts.root.rounded(0.34, 0.22, 0.24, 0.09, pants, { y: HIP_Y + 0.02 });
+  // a pill-shaped torso: rounds into the shoulders instead of ending in a box edge
+  parts.spine.capsule(0.15, 0.26, top, { y: HIP_Y + 0.31, sx: 1.36, sz: 0.88 }, 6, 16);
+  for (const sx of [-1, 1]) parts.spine.sphere(0.075, top, { x: sx * 0.2, y: HIP_Y + 0.47 }, 14, 10);
+  parts.spine.cylinder(0.055, 0.06, 0.12, skin, { y: HIP_Y + 0.6 }, 12);
+  if (coat) parts.spine.rounded(0.44, 0.4, 0.29, 0.12, top, { y: HIP_Y - 0.02 });
   if (look.topStyle === 'hoodie') {
-    parts.spine.box(0.3, 0.2, 0.12, shade(top, 0.82), { y: HIP_Y + 0.56, z: -0.16 });
-    parts.spine.box(0.24, 0.12, 0.02, shade(top, 0.85), { y: HIP_Y + 0.16, z: 0.13 });
-    parts.spine.box(0.03, 0.14, 0.02, '#e8e4dc', { x: -0.05, y: HIP_Y + 0.44, z: 0.13 });
-    parts.spine.box(0.03, 0.14, 0.02, '#e8e4dc', { x: 0.05, y: HIP_Y + 0.44, z: 0.13 });
+    parts.spine.rounded(0.32, 0.2, 0.14, 0.07, shade(top, 0.85), { y: HIP_Y + 0.55, z: -0.15 });
+    parts.spine.rounded(0.24, 0.12, 0.03, 0.02, shade(top, 0.88), { y: HIP_Y + 0.16, z: 0.13 });
+    for (const sx of [-1, 1]) parts.spine.capsule(0.012, 0.12, '#e8e4dc', { x: sx * 0.05, y: HIP_Y + 0.42, z: 0.135 }, 2, 6);
   }
-  if (look.topStyle === 'jacket') parts.spine.box(0.04, 0.48, 0.02, shade(top, 0.7), { y: HIP_Y + 0.3, z: 0.13 });
-  if (look.topStyle === 'suit') {
-    const shirt = look.shirt ?? '#f4f6fa';
-    const lapel = shade(top, 1.25);
-    // jacket hem over the hips, back vent, shirt-and-tie V, lapels, and a white collar that shows from behind
-    parts.spine.box(0.42, 0.18, 0.27, top, { y: HIP_Y + 0.02 });
-    parts.spine.box(0.015, 0.16, 0.01, shade(top, 0.6), { y: HIP_Y + 0.02, z: -0.137 });
-    parts.spine.box(0.14, 0.24, 0.01, shirt, { y: HIP_Y + 0.44, z: 0.127 });
-    parts.spine.box(0.05, 0.3, 0.012, look.tie ?? '#a3242f', { y: HIP_Y + 0.36, z: 0.134 });
-    parts.spine.box(0.07, 0.05, 0.016, shade(look.tie ?? '#a3242f', 0.8), { y: HIP_Y + 0.53, z: 0.136 });
-    for (const s of [-1, 1]) parts.spine.box(0.07, 0.3, 0.012, lapel, { x: s * 0.085, y: HIP_Y + 0.42, z: 0.132, rz: s * 0.32 });
-    parts.spine.box(0.04, 0.04, 0.012, '#e9e4d6', { x: -0.13, y: HIP_Y + 0.43, z: 0.133 });
-    parts.spine.box(0.26, 0.05, 0.2, shirt, { y: HIP_Y + 0.62, z: -0.01 });
-    for (const y of [0.24, 0.12]) parts.spine.box(0.025, 0.025, 0.01, shade(top, 0.55), { x: 0.035, y: HIP_Y + y, z: 0.13 });
+  if (look.topStyle === 'jacket') parts.spine.rounded(0.05, 0.5, 0.02, 0.01, shade(top, 0.7), { y: HIP_Y + 0.3, z: 0.13 });
+  if (look.topStyle === 'tee') parts.spine.cylinder(0.075, 0.08, 0.04, shade(top, 0.9), { y: HIP_Y + 0.56 }, 14);
+  if (suit) {
+    // jacket hem over the hips, white collar, shirt-and-tie V, lapels, buttons, pocket square
+    parts.spine.capsule(0.13, 0.12, top, { y: HIP_Y + 0.05, sx: 1.55, sz: 1.0 }, 4, 16);
+    parts.spine.rounded(0.012, 0.14, 0.01, 0.004, shade(top, 0.6), { y: HIP_Y + 0.0, z: -0.132 });
+    parts.spine.rounded(0.14, 0.24, 0.02, 0.008, shirt, { y: HIP_Y + 0.44, z: 0.118 });
+    parts.spine.cylinder(0.068, 0.072, 0.05, shirt, { y: HIP_Y + 0.585 }, 14);
+    const tie = look.tie ?? '#a3242f';
+    parts.spine.rounded(0.055, 0.3, 0.018, 0.008, tie, { y: HIP_Y + 0.36, z: 0.134 });
+    parts.spine.rounded(0.07, 0.05, 0.025, 0.012, shade(tie, 0.85), { y: HIP_Y + 0.53, z: 0.135 });
+    for (const sx of [-1, 1]) parts.spine.rounded(0.06, 0.3, 0.012, 0.006, shade(top, 1.12), { x: sx * 0.082, y: HIP_Y + 0.42, z: 0.128, rz: sx * 0.3 });
+    parts.spine.rounded(0.05, 0.035, 0.012, 0.006, '#ece6d6', { x: -0.13, y: HIP_Y + 0.44, z: 0.134 });
+    for (const y of [0.24, 0.12]) parts.spine.sphere(0.014, shade(top, 0.5), { x: 0.038, y: HIP_Y + y, z: 0.132 }, 8, 6);
   }
-  if (look.chest) parts.spine.box(0.22, 0.12, 0.02, look.chest, { y: HIP_Y + 0.36, z: 0.13 });
-  if (look.apron) parts.spine.box(0.34, 0.55, 0.02, '#f2f2f2', { y: HIP_Y + 0.14, z: 0.135 });
-  if (look.backpack) parts.spine.box(0.32, 0.4, 0.16, look.backpack, { y: HIP_Y + 0.32, z: -0.2 });
+  if (look.chest) parts.spine.rounded(0.22, 0.12, 0.02, 0.01, look.chest, { y: HIP_Y + 0.36, z: 0.128 });
+  if (look.apron) parts.spine.rounded(0.34, 0.56, 0.02, 0.01, '#f2f2f2', { y: HIP_Y + 0.14, z: 0.135 });
+  if (look.backpack) {
+    parts.spine.rounded(0.32, 0.42, 0.17, 0.07, look.backpack, { y: HIP_Y + 0.32, z: -0.2 });
+    parts.spine.rounded(0.24, 0.14, 0.05, 0.03, shade(look.backpack, 0.8), { y: HIP_Y + 0.2, z: -0.29 });
+  }
   if (look.deliveryBox) {
-    parts.spine.box(0.56, 0.5, 0.42, look.deliveryBox, { y: HIP_Y + 0.5, z: -0.36 });
-    parts.spine.box(0.58, 0.06, 0.44, shade(look.deliveryBox, 1.25), { y: HIP_Y + 0.62, z: -0.36 });
+    parts.spine.rounded(0.56, 0.5, 0.42, 0.05, look.deliveryBox, { y: HIP_Y + 0.5, z: -0.36 });
+    parts.spine.rounded(0.5, 0.05, 0.36, 0.02, shade(look.deliveryBox, 1.25), { y: HIP_Y + 0.75, z: -0.36 });
   }
 
-  // head
+  // head and face
   const r = 0.15 * hs;
-  const headY = shoulderY + 0.05 + r;
-  parts.head.box(0.09, 0.08, 0.09, skin, { y: shoulderY + 0.02 });
-  parts.head.blob(r, skin, { y: headY, sx: 0.95, sy: 1.05 }, 1);
-  parts.head.box(0.05 * hs, 0.06 * hs, 0.05, shade(skin, 0.9), { y: headY - 0.01 * hs, z: r * 0.98 });
-  for (const s of [-1, 1]) {
-    parts.head.box(0.035 * hs, 0.045 * hs, 0.02, look.eyes ?? '#1d1a18', { x: s * 0.055 * hs, y: headY + 0.03 * hs, z: r * 0.92 });
-    parts.head.box(0.012 * hs, 0.015 * hs, 0.02, '#fff', { x: s * 0.055 * hs + 0.008, y: headY + 0.04 * hs, z: r * 0.93 });
-    parts.head.box(0.035 * hs, 0.05 * hs, 0.05 * hs, skin, { x: s * r * 0.98, y: headY, z: 0 });
+  const headY = shoulderY + 0.06 + r;
+  parts.head.sphere(r, skin, { y: headY, sx: 0.96, sy: 1.04 }, 22, 16);
+  parts.head.sphere(r * 0.12, shade(skin, 0.95), { y: headY - r * 0.1, z: r * 0.97, sy: 1.2 }, 10, 8);
+  for (const sx of [-1, 1]) {
+    parts.head.sphere(r * 0.16, skin, { x: sx * r * 0.95, y: headY - r * 0.05, sx: 0.5 }, 10, 8);
+    parts.head.sphere(r * 0.13, look.eyes ?? '#1d1a18', { x: sx * r * 0.36, y: headY + r * 0.14, z: r * 0.86, sz: 0.5, sy: 1.25 }, 10, 8);
+    parts.head.sphere(r * 0.045, '#ffffff', { x: sx * r * 0.36 + r * 0.04, y: headY + r * 0.22, z: r * 0.93 }, 6, 4);
+    parts.head.capsule(r * 0.035, r * 0.2, look.hairStyle === 'bald' ? shade(skin, 0.7) : look.hair, { x: sx * r * 0.38, y: headY + r * 0.42, z: r * 0.86, rz: Math.PI / 2 + sx * 0.12 }, 2, 6);
   }
+  parts.head.capsule(r * 0.04, r * 0.22, '#9a4e44', { y: headY - r * 0.42, z: r * 0.9, rz: Math.PI / 2 }, 2, 6);
   if (look.glasses) {
-    for (const s of [-1, 1]) parts.head.box(0.07 * hs, 0.05 * hs, 0.02, '#141414', { x: s * 0.055 * hs, y: headY + 0.03 * hs, z: r * 0.97 });
-    parts.head.box(0.04 * hs, 0.012, 0.02, '#141414', { y: headY + 0.04 * hs, z: r * 0.99 });
+    for (const sx of [-1, 1]) parts.head.rounded(r * 0.5, r * 0.36, 0.015, 0.01, '#141414', { x: sx * r * 0.36, y: headY + r * 0.14, z: r * 0.98 });
+    parts.head.rounded(r * 0.24, 0.012, 0.012, 0.004, '#141414', { y: headY + r * 0.2, z: r * 1.0 });
   }
-  const hairR = r * 1.06;
+  const hairCap = (tilt: number, coverage: number, grow = 1.07) =>
+    parts.head.add(new SphereGeometry(r * grow, 22, 12, 0, Math.PI * 2, 0, coverage), look.hair, { y: headY + r * 0.02, rx: -tilt });
   switch (look.hairStyle) {
     case 'bald':
       break;
     case 'long':
-      parts.head.blob(hairR, hair, { y: headY + 0.02, z: -0.015, sx: 1.02, sy: 0.98 }, 1);
-      parts.head.box(r * 1.9, r * 1.8, r * 0.8, hair, { y: headY - r * 0.6, z: -r * 0.55 });
+      hairCap(0.35, 1.7);
+      parts.head.rounded(r * 1.9, r * 1.9, r * 0.7, r * 0.3, look.hair, { y: headY - r * 0.55, z: -r * 0.55 });
       break;
     case 'bun':
-      parts.head.blob(hairR, hair, { y: headY + 0.02, z: -0.015, sy: 0.95 }, 1);
-      parts.head.blob(r * 0.45, hair, { y: headY + r * 0.95, z: -r * 0.5 }, 1);
+      hairCap(0.3, 1.6);
+      parts.head.sphere(r * 0.45, look.hair, { y: headY + r * 0.95, z: -r * 0.45 }, 12, 10);
       break;
     case 'curly':
-      for (const [x, y, z] of [[0, 0.7, 0], [-0.5, 0.45, -0.2], [0.5, 0.45, -0.2], [0, 0.3, -0.6], [-0.4, 0.75, -0.35], [0.4, 0.75, -0.35]]) {
-        parts.head.blob(r * 0.55, hair, { x: x * r, y: headY + y * r, z: z * r }, 0);
+      for (const [x, y, z] of [[0, 0.8, 0], [-0.55, 0.55, -0.2], [0.55, 0.55, -0.2], [0, 0.4, -0.65], [-0.45, 0.8, -0.35], [0.45, 0.8, -0.35], [-0.3, 0.75, 0.35], [0.3, 0.75, 0.35], [0, 0.0, -0.8]]) {
+        parts.head.blob(r * 0.5, look.hair, { x: x * r, y: headY + y * r, z: z * r }, 1);
       }
       break;
     default:
-      parts.head.blob(hairR, hair, { y: headY + r * 0.16, z: -r * 0.12, sx: 1.02, sy: 0.88 }, 1);
-      parts.head.box(r * 1.7, r * 0.35, r * 0.5, hair, { y: headY + r * 0.62, z: r * 0.5 });
+      // short and neat with a side part: a cap of hair tilted back and a soft swoop over the forehead
+      hairCap(0.42, 1.5);
+      parts.head.sphere(r * 0.58, look.hair, { x: r * 0.1, y: headY + r * 0.62, z: r * 0.48, sx: 1.12, sy: 0.48, sz: 0.85, rz: -0.18 }, 16, 10);
   }
   if (look.cap) {
-    parts.head.cylinder(r * 1.06, r * 1.08, r * 0.55, look.cap, { y: headY + r * 0.62 }, 10);
-    parts.head.box(r * 1.5, 0.025, r * 0.9, look.cap, { y: headY + r * 0.42, z: r * 1.05 });
+    parts.head.add(new SphereGeometry(r * 1.1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), look.cap, { y: headY + r * 0.2 });
+    parts.head.rounded(r * 1.5, 0.03, r * 0.9, 0.012, look.cap, { y: headY + r * 0.22, z: r * 1.05 });
   }
 
   // arms (hang from the shoulders; forearms hold props)
   for (const [side, arm, fore] of [[-1, 'armL', 'foreL'], [1, 'armR', 'foreR']] as const) {
     const x = side * SHOULDER[0];
     const sy = HIP_Y + SHOULDER[1];
-    parts[arm].box(0.11, 0.3, 0.12, top, { x, y: sy - 0.13 });
-    const sleeve = coat || look.topStyle === 'hoodie' || look.topStyle === 'jacket' || look.topStyle === 'suit';
-    parts[fore].box(0.1, 0.27, 0.11, sleeve ? top : skin, { x, y: sy - 0.42 });
-    if (look.topStyle === 'suit') parts[fore].box(0.095, 0.04, 0.105, look.shirt ?? '#f4f6fa', { x, y: sy - 0.55 });
-    parts[fore].box(0.09, 0.09, 0.1, skin, { x, y: sy - 0.59 });
+    parts[arm].capsule(0.062, 0.22, top, { x, y: sy - 0.15 }, 4, 12);
+    parts[fore].capsule(0.056, 0.2, sleeveColor, { x, y: sy - 0.42 }, 4, 12);
+    if (suit) parts[fore].cylinder(0.052, 0.052, 0.035, shirt, { x, y: sy - 0.535 }, 12);
+    parts[fore].sphere(0.058, skin, { x, y: sy - 0.6, sy: 1.1 }, 12, 10);
   }
   const handY = HIP_Y + SHOULDER[1] - 0.62;
   if (look.phone) {
-    parts.foreR.box(0.08, 0.14, 0.02, '#111', { x: SHOULDER[0], y: handY + 0.05, z: 0.07 });
-    parts.foreR.box(0.065, 0.12, 0.005, '#8fd3ff', { x: SHOULDER[0], y: handY + 0.05, z: 0.082 });
+    parts.foreR.rounded(0.08, 0.15, 0.02, 0.012, '#111', { x: SHOULDER[0], y: handY + 0.05, z: 0.07 });
+    parts.foreR.rounded(0.066, 0.13, 0.004, 0.008, '#8fd3ff', { x: SHOULDER[0], y: handY + 0.05, z: 0.081 });
   }
   if (look.camera) {
-    parts.foreR.box(0.2, 0.13, 0.1, '#1a1a1a', { x: SHOULDER[0] - 0.08, y: handY + 0.04, z: 0.06 });
-    parts.foreR.cylinder(0.04, 0.04, 0.08, '#445', { x: SHOULDER[0] - 0.08, y: handY + 0.04, z: 0.13, rx: Math.PI / 2 }, 8);
+    parts.foreR.rounded(0.2, 0.13, 0.1, 0.03, '#1a1a1a', { x: SHOULDER[0] - 0.08, y: handY + 0.04, z: 0.06 });
+    parts.foreR.cylinder(0.045, 0.045, 0.09, '#445', { x: SHOULDER[0] - 0.08, y: handY + 0.04, z: 0.13, rx: Math.PI / 2 });
   }
   if (look.map) {
-    parts.foreR.box(0.46, 0.02, 0.32, '#f4f1e1', { x: SHOULDER[0] - 0.23, y: handY + 0.02, z: 0.12 });
+    parts.foreR.rounded(0.46, 0.02, 0.32, 0.008, '#f4f1e1', { x: SHOULDER[0] - 0.23, y: handY + 0.02, z: 0.12 });
     parts.foreR.box(0.14, 0.024, 0.1, '#8fb3d9', { x: SHOULDER[0] - 0.33, y: handY + 0.022, z: 0.08 });
     parts.foreR.box(0.12, 0.024, 0.08, '#e07a5f', { x: SHOULDER[0] - 0.12, y: handY + 0.022, z: 0.16 });
   }
@@ -165,16 +176,15 @@ export function buildPerson(look: PersonLook): Person {
   // legs
   for (const [side, thigh, shin] of [[-1, 'thighL', 'shinL'], [1, 'thighR', 'shinR']] as const) {
     const x = side * 0.1;
-    parts[thigh].box(0.15, 0.44, 0.17, coat ? shade(top, 0.95) : pants, { x, y: HIP_Y - 0.22 });
-    parts[shin].box(0.13, 0.4, 0.15, pants, { x, y: HIP_Y - 0.64 });
+    parts[thigh].capsule(0.08, 0.3, coat ? shade(top, 0.95) : pants, { x, y: HIP_Y - 0.22 }, 4, 12);
+    parts[shin].capsule(0.068, 0.3, pants, { x, y: HIP_Y - 0.63 }, 4, 12);
     if (look.dressShoes) {
-      // polished oxfords: low, long, slightly pointed, with a thin dark sole
-      parts[shin].box(0.12, 0.075, 0.29, shoes, { x, y: 0.05, z: 0.06 });
-      parts[shin].box(0.09, 0.06, 0.06, shoes, { x, y: 0.045, z: 0.22 });
-      parts[shin].box(0.125, 0.022, 0.31, '#1a120c', { x, y: 0.011, z: 0.065 });
+      // polished oxfords: low, long, slightly pointed, thin dark sole
+      parts[shin].rounded(0.115, 0.08, 0.28, 0.04, shoes, { x, y: 0.052, z: 0.055 });
+      parts[shin].rounded(0.112, 0.016, 0.275, 0.006, '#1a120c', { x, y: 0.01, z: 0.055 });
     } else {
-      parts[shin].box(0.14, 0.09, 0.27, shoes, { x, y: 0.045, z: 0.05 });
-      parts[shin].box(0.145, 0.03, 0.28, shade(shoes, 0.75), { x, y: 0.015, z: 0.05 });
+      parts[shin].rounded(0.135, 0.1, 0.27, 0.05, shoes, { x, y: 0.055, z: 0.05 });
+      parts[shin].rounded(0.14, 0.035, 0.28, 0.015, shoes === '#f2f2f2' || shoes === '#f4f4f4' ? '#d9d9d9' : '#f2f2f2', { x, y: 0.018, z: 0.05 });
     }
   }
 
@@ -469,6 +479,8 @@ export function randomLook(variant: number, kind: 'local' | 'tourist' | 'courier
     shoes: pick(SHOES),
     height: 1.62 + r() * 0.24,
     glasses: r() < 0.2,
+    headScale: 1.12,
+    eyes: pick(['#3a2616', '#1d1a18', '#3f5a6e', '#4b5a2e']),
   };
   if (kind === 'tourist') {
     return { ...base, top: pick(BRIGHT), topStyle: 'tee', chest: '#c62828', cap: r() < 0.5 ? pick(['#c62828', '#1e3b7a', '#f2f2f2']) : undefined, backpack: r() < 0.45 ? pick(['#e0572a', '#2a6e9e', '#3d3d3d']) : undefined };

@@ -148,36 +148,50 @@ export type CarKind = 'cab' | 'sedan' | 'van' | 'bus';
 export function carGeometry(kind: CarKind, paint: string): BufferGeometry {
   return cached(`car:${kind}:${paint}`, () => {
     const m = new MeshBuilder();
-    const glass = '#2c3a4a';
+    const glass = '#26323f';
     const tire = '#151517';
+    const trim = '#2a2b30';
+    const wheel = (x: number, z: number, r: number) => {
+      m.cylinder(r, r, 0.26, tire, { x, y: r, z, rz: Math.PI / 2 }, 18);
+      m.cylinder(r * 0.5, r * 0.5, 0.27, '#9aa0a8', { x, y: r, z, rz: Math.PI / 2 }, 12);
+    };
     if (kind === 'bus') {
-      m.box(2.55, 2.7, 12, '#f1f1f1', { y: 1.65 });
-      m.box(2.57, 1.0, 11.4, glass, { y: 2.2 });
-      m.box(2.57, 0.35, 12.02, '#1f5fb3', { y: 1.15 });
-      m.box(2.4, 0.9, 0.05, glass, { y: 2.15, z: 6.0 });
-      for (const z of [-4.3, 4.0]) for (const s of [-1, 1]) m.cylinder(0.5, 0.5, 0.3, tire, { x: s * 1.2, y: 0.5, z, rz: Math.PI / 2 }, 10);
+      m.rounded(2.55, 2.75, 12, 0.3, '#f1f1f1', { y: 1.7 });
+      m.rounded(2.58, 1.0, 11.2, 0.15, glass, { y: 2.25 });
+      m.rounded(2.58, 0.3, 11.9, 0.1, '#1f5fb3', { y: 1.2 });
+      m.rounded(2.3, 1.0, 0.1, 0.05, glass, { y: 2.2, z: 5.97 });
+      m.rounded(2.5, 0.35, 0.3, 0.1, trim, { y: 0.5, z: 5.95 });
+      m.rounded(2.0, 0.3, 1.2, 0.1, '#d9dce0', { y: 3.15, z: -2 });
+      for (const z of [-4.3, 4.0]) for (const sx of [-1, 1]) wheel(sx * 1.16, z, 0.5);
       return m.build();
     }
-    const L = kind === 'van' ? 5.2 : 4.7;
-    const W = kind === 'van' ? 2.0 : 1.85;
-    const bodyH = kind === 'van' ? 1.5 : 0.7;
-    m.box(W, bodyH, L, paint, { y: 0.32 + bodyH / 2 });
-    if (kind === 'van') {
-      m.box(W + 0.02, 0.55, L * 0.3, glass, { y: 1.45, z: -L * 0.33 });
+    const van = kind === 'van';
+    const L = van ? 5.2 : 4.7;
+    const W = van ? 2.0 : 1.86;
+    const bodyH = van ? 1.55 : 0.72;
+    const base = 0.3;
+    m.rounded(W, bodyH, L, van ? 0.22 : 0.2, paint, { y: base + bodyH / 2 });
+    if (van) {
+      m.rounded(W + 0.02, 0.55, L * 0.26, 0.1, glass, { y: 1.5, z: -L * 0.34 });
+      m.rounded(W - 0.3, 0.5, 0.06, 0.04, glass, { y: 1.45, z: L / 2 });
     } else {
-      m.box(W - 0.15, 0.55, L * 0.5, paint, { y: 0.32 + bodyH + 0.27, z: 0.15 });
-      m.box(W - 0.13, 0.42, L * 0.5 - 0.15, glass, { y: 0.32 + bodyH + 0.28, z: 0.15 });
-      m.box(W - 0.3, 0.42, 0.05, glass, { y: 0.32 + bodyH + 0.28, z: 0.15 + L * 0.25 + 0.01 });
+      // greenhouse: painted roof over a glass band, raked windshields
+      m.rounded(W - 0.18, 0.56, L * 0.5, 0.16, paint, { y: base + bodyH + 0.24, z: 0.12 });
+      m.rounded(W - 0.14, 0.38, L * 0.5 - 0.08, 0.12, glass, { y: base + bodyH + 0.24, z: 0.12 });
+      m.rounded(W - 0.36, 0.36, 0.06, 0.05, glass, { y: base + bodyH + 0.22, z: 0.12 + L * 0.25 + 0.02, rx: -0.35 });
+      m.rounded(W - 0.36, 0.36, 0.06, 0.05, glass, { y: base + bodyH + 0.22, z: 0.12 - L * 0.25 - 0.02, rx: 0.4 });
     }
     if (kind === 'cab') {
-      m.box(W + 0.01, 0.06, L + 0.01, '#141414', { y: 0.62 });
-      m.box(0.6, 0.18, 0.28, '#fff8dc', { y: 0.32 + bodyH + 0.64, z: 0.15 });
+      for (let i = 0; i < 9; i++) m.box(0.02, 0.07, 0.24, i % 2 ? '#111' : '#f5c518', { x: W / 2 + 0.002, y: base + 0.36, z: -1.1 + i * 0.24 });
+      for (let i = 0; i < 9; i++) m.box(0.02, 0.07, 0.24, i % 2 ? '#111' : '#f5c518', { x: -W / 2 - 0.002, y: base + 0.36, z: -1.1 + i * 0.24 });
+      m.rounded(0.62, 0.18, 0.28, 0.06, '#fff8dc', { y: base + bodyH + 0.62, z: 0.12 });
     }
-    for (const s of [-1, 1]) {
-      m.box(0.32, 0.14, 0.05, '#c41f1f', { x: s * (W / 2 - 0.25), y: 0.62, z: L / 2 + 0.01 });
-      for (const z of [-L * 0.32, L * 0.32]) m.cylinder(0.33, 0.33, 0.24, tire, { x: s * (W / 2 - 0.05), y: 0.33, z, rz: Math.PI / 2 }, 10);
+    for (const z of [-L / 2, L / 2]) m.rounded(W + 0.02, 0.2, 0.22, 0.08, trim, { y: base + 0.16, z });
+    for (const sx of [-1, 1]) {
+      m.rounded(0.34, 0.14, 0.06, 0.04, '#c41f1f', { x: sx * (W / 2 - 0.26), y: base + bodyH - 0.12, z: L / 2 + 0.01 });
+      m.rounded(0.3, 0.12, 0.06, 0.04, '#f4f1e4', { x: sx * (W / 2 - 0.26), y: base + bodyH - 0.14, z: -L / 2 - 0.01 });
+      for (const z of [-L * 0.31, L * 0.31]) wheel(sx * (W / 2 - 0.08), z, 0.34);
     }
-    m.box(W - 0.2, 0.12, 0.05, '#222', { y: 0.45, z: L / 2 + 0.01 });
     return m.build();
   });
 }

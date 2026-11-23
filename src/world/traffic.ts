@@ -1,6 +1,7 @@
 import { Group, Mesh, type Material } from 'three';
 import { carGeometry, carGlowGeometry, type CarKind } from '../actors/models.ts';
-import { buildPerson, disposePerson, pose, randomLook, type Person } from '../actors/people.ts';
+import type { Crowd } from '../actors/crowd.ts';
+import { pose, type Person } from '../actors/people.ts';
 import type { Course } from '../sim/course.ts';
 import { deriveSeed, Rng } from '../sim/rng.ts';
 import { STREET, toZ } from './layout.ts';
@@ -38,8 +39,10 @@ export class Traffic {
   private readonly glow: Material;
   private spawnT = 0;
   onHonk: (() => void) | null = null;
+  private readonly crowd: Crowd;
 
-  constructor(course: Course, toy: Material, glow: Material) {
+  constructor(course: Course, toy: Material, glow: Material, crowd: Crowd) {
+    this.crowd = crowd;
     this.course = course;
     this.toy = toy;
     this.glow = glow;
@@ -106,7 +109,7 @@ export class Traffic {
   }
 
   dispose(): void {
-    for (const w of this.walkers) disposePerson(w.person);
+    for (const w of this.walkers) this.crowd.release('stroller', w.person);
     this.group.clear();
   }
 
@@ -133,7 +136,7 @@ export class Traffic {
   }
 
   private spawnWalker(d: number): void {
-    const person = buildPerson(randomLook(this.rng.float(), this.rng.chance(0.3) ? 'tourist' : 'local'));
+    const person = this.crowd.acquire('stroller', this.rng.float());
     const south = this.rng.chance(0.5);
     person.object.rotation.y = south ? Math.PI : 0;
     person.mesh.castShadow = false;

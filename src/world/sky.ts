@@ -112,6 +112,48 @@ export class Sky {
   }
 }
 
+/**
+ * What the street "sees" for reflections: the golden sky above, a ring of building walls with lit
+ * windows around the horizon, and pavement below. Used only to bake the environment map.
+ */
+export function canyonEnvironment(sunDir: Vector3): Group {
+  const g = new Sky(sunDir).group;
+  const w = 1024;
+  const h = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const c = canvas.getContext('2d')!;
+  const r = mulberry32(17);
+  let x = 0;
+  while (x < w) {
+    const bw = 40 + r() * 70;
+    const top = h * (0.05 + r() * 0.35);
+    const tone = ['#6e5a4c', '#8a7a68', '#5d6470', '#7a6a5a', '#9a8a74'][Math.floor(r() * 5)];
+    c.fillStyle = tone;
+    c.fillRect(x, top, bw + 1, h - top);
+    for (let wy = top + 8; wy < h - 30; wy += 14) {
+      for (let wx = x + 5; wx < x + bw - 6; wx += 11) {
+        c.fillStyle = r() < 0.25 ? 'rgba(255,214,150,.9)' : 'rgba(40,48,62,.85)';
+        c.fillRect(wx, wy, 6, 8);
+      }
+    }
+    x += bw;
+  }
+  c.fillStyle = '#3a3633';
+  c.fillRect(0, h - 26, w, 26);
+  const tex = new CanvasTexture(canvas);
+  tex.wrapS = RepeatWrapping;
+  tex.repeat.set(2, 1);
+  tex.colorSpace = SRGBColorSpace;
+  const walls = new Mesh(new CylinderGeometry(120, 120, 150, 32, 1, true), new MeshBasicMaterial({ map: tex, side: BackSide, transparent: true, fog: false }));
+  walls.position.y = 40;
+  const ground = new Mesh(new CylinderGeometry(120, 120, 1, 32), new MeshBasicMaterial({ color: '#5a5650', fog: false }));
+  ground.position.y = -36;
+  g.add(walls, ground);
+  return g;
+}
+
 function empireTexture(): CanvasTexture {
   const w = 128;
   const h = 300;

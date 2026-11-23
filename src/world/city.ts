@@ -61,13 +61,15 @@ export class City {
   private readonly hand: InstancedMesh;
   private readonly mats: Record<'facade' | 'toy' | 'glow' | 'sign' | 'sidewalk' | 'road' | 'billboard', Material>;
   private readonly seed: number;
+  private job: { index: number; steps: Generator<void, Group> } | null = null;
 
-  constructor(course: Course, atlas: Atlas) {
+  /** `detail` = the full facade shader (relief, masonry, room interiors); off for the Low tier */
+  constructor(course: Course, atlas: Atlas, detail = true) {
     this.course = course;
     this.atlas = atlas;
     this.seed = deriveSeed(course.seed, 'city');
     this.mats = {
-      facade: facadeMaterial(),
+      facade: facadeMaterial(detail),
       toy: toyMaterial(),
       glow: glowMaterial(),
       sign: signMaterial(atlas),
@@ -101,18 +103,27 @@ export class City {
     this.defs.push({ index: ints.length, start: last.d1, end: course.level.length + 320, blockStart: last.d1, blockEnd: course.level.length + 320 });
   }
 
-  /** Builds at most one missing chunk per call (no frame hitches); drops chunks well behind. */
-  update(dist: number, time: number, ahead = 330): void {
-    for (const def of this.defs) {
-      const wanted = def.end > dist - 25 && def.start < dist + ahead;
-      const have = this.live.get(def.index);
-      if (wanted && !have) {
-        const g = this.buildChunk(def);
-        this.live.set(def.index, g);
-        this.group.add(g);
-        break;
+  /**
+   * Streams blocks in and out. A block is built a slice at a time within `budgetMs` per frame, so even
+   * slow phones never stall on one; blocks well behind the camera are dropped.
+   */
+  update(dist: number, time: number, ahead = 330, budgetMs = 2.5): void {
+    const wanted = (def: ChunkDef) => def.end > dist - 25 && def.start < dist + ahead;
+    for (const def of this.defs) if (!wanted(def) && this.live.has(def.index)) this.drop(def.index);
+    if (this.job && !wanted(this.defs[this.job.index])) this.job = null;
+    const start = performance.now();
+    while (performance.now() - start < budgetMs) {
+      if (!this.job) {
+        const next = this.defs.find(def => wanted(def) && !this.live.has(def.index));
+        if (!next) break;
+        this.job = { index: next.index, steps: this.chunkJob(next) };
       }
-      if (!wanted && have) this.drop(def.index);
+      const step = this.job.steps.next();
+      if (step.done) {
+        this.live.set(this.job.index, step.value);
+        this.group.add(step.value);
+        this.job = null;
+      }
     }
     let walks = 0;
     let hands = 0;
@@ -130,9 +141,9 @@ export class City {
     this.hand.instanceMatrix.needsUpdate = true;
   }
 
-  /** Build everything within `ahead` right now (used behind the loading screen). */
+  /** Build everything within `ahead` right now (behind the loading screen, or after a teleport). */
   prime(dist: number, ahead = 330): void {
-    for (let i = 0; i < this.defs.length; i++) this.update(dist, 0, ahead);
+    this.update(dist, 0, ahead, Infinity);
   }
 
   dispose(): void {
@@ -153,21 +164,36 @@ export class City {
     this.signals.delete(index);
   }
 
-  private buildChunk(def: ChunkDef): Group {
+  /** One block, built in slices: yields after each building and each merged mesh. */
+  private *chunkJob(def: ChunkDef): Generator<void, Group> {
     const rng = new Rng(deriveSeed(this.seed, `chunk${def.index}`));
     const k = new ChunkKit(this.atlas);
     const inSquare = (d: number) => this.course.zones.some(z => z.id === 'times-square' && d > z.from - 10 && d < z.to + 10);
 
     const nearRow = this.row(rng, def, 'near', inSquare);
     const farRow = this.row(rng, def, 'far', inSquare);
-    for (const b of nearRow) this.building(k, rng, b, 'near', def);
-    for (const b of farRow) this.building(k, rng, b, 'far', def);
-
+    for (const b of nearRow) {
+      this.building(k, rng, b, 'near', def);
+      yield;
+      k.toy.compact();
+      yield;
+    }
+    for (const b of farRow) {
+      this.building(k, rng, b, 'far', def);
+      yield;
+      k.toy.compact();
+      yield;
+    }
     this.ground(k, def);
+    yield;
     this.streetFurniture(k, rng, def, inSquare);
+    yield;
+    k.toy.compact();
+    yield;
     if (def.crossing) this.crossing(k, rng, def.crossing);
     if (def.blockStart < PENN_END && def.blockEnd >= PENN_END) this.pennEntrance(k);
     if (def.crossing?.street === 42) this.officeTower(k, def);
+    yield;
 
     const g = new Group();
     g.name = `chunk${def.index}`;
@@ -183,8 +209,10 @@ export class City {
     add(k.facades.empty ? null : k.facades.build(), this.mats.facade);
     add(k.sidewalk.build(), this.mats.sidewalk, { receive: true });
     add(k.road.build(), this.mats.road, { receive: true });
+    yield;
     k.toy.merge(k.paint);
     add(k.toy.empty ? null : k.toy.build(), this.mats.toy, { cast: true, receive: true });
+    yield;
     add(k.glow.empty ? null : k.glow.build(), this.mats.glow);
     add(k.signs.empty ? null : k.signs.build(), this.mats.sign);
     add(k.billboards.empty ? null : k.billboards.build(), this.mats.billboard);
@@ -271,11 +299,39 @@ export class City {
           color: [hexRgb(shade(b.color, 0.9))],
         });
       }
-      // cornice: sticks out 0.45 m over the street
+      // stepped cornice (band, overhang, cap) instead of one slab
       const trim = shade(b.color, b.style === 0 ? 1.18 : 0.82);
-      const xo = x + out * 0.45;
-      const xi = x - out * 0.6;
-      k.toy.block(Math.min(xo, xi), Math.max(xo, xi), y1 - 0.9, y1, z1, z0, trim);
+      const ledge = (reach: number, ya: number, yb: number, c: string) => {
+        const xo = x + out * reach;
+        const xi = x - out * 0.6;
+        k.toy.block(Math.min(xo, xi), Math.max(xo, xi), ya, yb, z1, z0, c);
+      };
+      if (b.style <= 1) {
+        ledge(0.12, y1 - 1.5, y1 - 1.1, trim);
+        ledge(0.5, y1 - 0.7, y1 - 0.25, trim);
+        ledge(0.62, y1 - 0.25, y1, shade(trim, 0.92));
+        for (let d = b.d0 + 1.25; d < b.d1 - 0.5; d += 2.5) k.toy.box(0.42, 0.42, 0.22, shade(trim, 0.88), { x: x + out * 0.24, y: y1 - 0.9, z: toZ(d) });
+      } else {
+        ledge(0.2, y1 - 0.6, y1, trim);
+      }
+      // pilasters between bays and a belt course over the shops give the masonry fronts some depth
+      if (y0 === 0 && b.style <= 1) {
+        const bay = b.style === 0 ? 2.5 : 3.0;
+        for (let d = b.d0 + bay * 2; d < b.d1 - 0.5; d += bay * 2) {
+          const xo = x + out * 0.14;
+          k.toy.block(Math.min(x, xo), Math.max(x, xo), b.storefront, y1 - 1.5, toZ(d + 0.16), toZ(d - 0.16), shade(b.color, 0.94));
+        }
+        const xb = x + out * 0.2;
+        k.toy.block(Math.min(x, xb), Math.max(x, xb), b.storefront - 0.1, b.storefront + 0.25, z1, z0, trim);
+      }
+      // rooftop clutter breaks up the skyline: a stair bulkhead and some mechanical boxes
+      if (y1 === b.h && b.style !== 5 && rng.chance(0.7)) {
+        const roofX = x - out * rng.range(4, 10);
+        const zm = toZ(rng.range(b.d0 + 3, Math.max(b.d0 + 3.5, b.d1 - 3)));
+        k.toy.box(3.2, 2.6, 3.0, shade(b.color, 0.8), { x: roofX, y: b.h + 1.3, z: zm });
+        if (rng.chance(0.6)) k.toy.box(1.6, 1.0, 1.2, '#9aa0a6', { x: roofX - out * 3, y: b.h + 0.5, z: zm + rng.range(-3, 3) });
+        if (b.h > 60 && rng.chance(0.5)) k.toy.cylinder(0.08, 0.12, 9, '#c9ced4', { x: roofX, y: b.h + 2.6 + 4.5, z: zm }, 6);
+      }
     }
 
     // storefront dressing
@@ -367,7 +423,8 @@ export class City {
 
   private billboards(k: ChunkKit, rng: Rng, X: number, out: number, b: Building): void {
     const n = rng.int(1, 3);
-    let y = b.storefront + 1.6;
+    // on our side the camera passes a meter or two away, so screens start higher up and stay out of its face
+    let y = out < 0 ? 11 : b.storefront + 1.6;
     for (let i = 0; i < n && y < b.h - 6; i++) {
       const hgt = rng.range(6, 13);
       const d0 = b.d0 + 0.8;
@@ -490,7 +547,7 @@ export class City {
     // November street trees, but not in Times Square or the last stretch to Penn
     for (let d = Math.ceil((blockStart - 26) / 32) * 32 + 26; d < blockEnd; d += 32) {
       if (clear(d, 4) && !inSquare(d) && d < this.course.level.length - 60) this.tree(k, rng, STREET.treeX, d);
-      if (clear(d + 9, 4)) this.tree(k, rng, STREET.farCurb - 0.9, d + 9);
+      if (clear(d + 9, 4)) this.tree(k, rng, STREET.farCurb - 0.9, d + 9, 1);
     }
     const it = def.crossing;
     if (!it) return;
@@ -500,23 +557,43 @@ export class City {
     if (this.course.level.landmarks.subwayStreets.includes(it.street)) this.subwayEntrance(k, it.d0 - 15);
   }
 
+  /** NYC cobra-head streetlight: fluted base, tapered pole, a curving arm and the long flat head. */
   private lamp(k: ChunkKit, x: number, d: number, dir: number): void {
     const z = toZ(d);
     const pole = '#3d4a44';
-    k.toy.cylinder(0.09, 0.13, 7.4, pole, { x, y: 3.7, z }, 6);
-    k.toy.cylinder(0.2, 0.24, 0.5, pole, { x, y: 0.25, z }, 6);
-    k.toy.box(1.7, 0.1, 0.1, pole, { x: x + dir * 0.8, y: 7.45, z, rz: dir * 0.12 });
-    k.toy.box(0.85, 0.16, 0.42, '#55625c', { x: x + dir * 1.7, y: 7.5, z });
-    k.glow.box(0.7, 0.05, 0.32, '#ffe1a6', { x: x + dir * 1.7, y: 7.41, z });
+    k.toy.cylinder(0.22, 0.27, 0.7, pole, { x, y: 0.35, z }, 12);
+    k.toy.cylinder(0.17, 0.22, 0.12, shade(pole, 1.2), { x, y: 0.76, z }, 12);
+    k.toy.cylinder(0.08, 0.13, 6.4, pole, { x, y: 3.9, z }, 12);
+    const arc: [number, number, number][] = [[0.1, 7.15, 0.5], [0.45, 7.45, 0.25], [0.95, 7.6, 0.08], [1.45, 7.62, -0.02]];
+    for (const [ax, ay, rot] of arc) k.toy.cylinder(0.05, 0.06, 0.58, pole, { x: x + dir * ax, y: ay, z, rz: -dir * (Math.PI / 2 - rot) }, 8);
+    k.toy.capsule(0.2, 0.75, '#56635d', { x: x + dir * 1.95, y: 7.58, z, rz: Math.PI / 2, sz: 1.4, sx: 0.55 }, 4, 12);
+    k.glow.capsule(0.13, 0.6, '#ffe1a6', { x: x + dir * 1.95, y: 7.47, z, rz: Math.PI / 2, sz: 1.3, sx: 0.3 }, 3, 10);
   }
 
-  private tree(k: ChunkKit, rng: Rng, x: number, d: number): void {
+  /** A November street tree: tree pit with a little iron guard, branching trunk, soft clusters of autumn leaves. */
+  private tree(k: ChunkKit, rng: Rng, x: number, d: number, detail = 2): void {
     const z = toZ(d);
-    k.paint.block(x - 0.65, x + 0.65, 0.004, 0.012, z - 0.65, z + 0.65, '#3b3128');
-    k.toy.cylinder(0.09, 0.13, 3.0, '#5b4636', { x, y: 1.5, z }, 6);
-    const n = rng.int(4, 6);
-    for (let i = 0; i < n; i++) {
-      k.toy.blob(rng.range(0.55, 0.95), rng.pick(LEAVES), { x: x + rng.range(-0.7, 0.7), y: rng.range(3.1, 4.6), z: z + rng.range(-0.7, 0.7), ry: rng.range(0, 3) });
+    k.paint.block(x - 0.65, x + 0.65, 0.004, 0.014, z - 0.65, z + 0.65, '#3b3128');
+    for (const [dx, dz, w, dd] of [[0, -0.66, 1.34, 0.04], [0, 0.66, 1.34, 0.04], [-0.66, 0, 0.04, 1.34], [0.66, 0, 0.04, 1.34]]) {
+      k.toy.box(w, 0.04, dd, '#1f2420', { x: x + dx, y: 0.42, z: z + dz });
+    }
+    for (const [dx, dz] of [[-0.66, -0.66], [0.66, -0.66], [-0.66, 0.66], [0.66, 0.66]]) k.toy.cylinder(0.02, 0.02, 0.44, '#1f2420', { x: x + dx, y: 0.22, z: z + dz }, 6);
+    const bark = '#5b4636';
+    k.toy.cylinder(0.08, 0.13, 2.6, bark, { x, y: 1.3, z }, 10);
+    const crown: [number, number, number][] = [];
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + rng.range(-0.4, 0.4);
+      const lean = rng.range(0.45, 0.7);
+      k.toy.cylinder(0.04, 0.07, 1.5, bark, { x: x + Math.cos(a) * 0.32, y: 3.1, z: z + Math.sin(a) * 0.32, rx: Math.sin(a) * lean, rz: -Math.cos(a) * lean }, 8);
+      crown.push([x + Math.cos(a) * 0.7, rng.range(3.6, 4.1), z + Math.sin(a) * 0.7]);
+    }
+    crown.push([x, 4.4, z]);
+    const leaf = rng.pick(LEAVES);
+    for (const [cx, cy, cz] of crown) {
+      for (let j = 0; j < 2; j++) {
+        const c = j ? shade(leaf, rng.range(0.85, 1.1)) : rng.pick(LEAVES);
+        k.toy.blob(rng.range(0.55, 0.8), c, { x: cx + rng.range(-0.35, 0.35), y: cy + rng.range(-0.2, 0.3), z: cz + rng.range(-0.35, 0.35), sy: 0.85, ry: rng.range(0, 3) }, detail);
+      }
     }
   }
 

@@ -56,7 +56,7 @@ export class Coins {
   constructor(coins: readonly Coin[]) {
     this.order = [...coins].sort((a, b) => a.d - b.d);
     // Real dimes are tiny; these are toy-sized and lit from within so the safe path reads at speed.
-    const metal = new MeshStandardMaterial({ color: '#eef0f6', metalness: 0.35, roughness: 0.25, emissive: '#9a9aa6', emissiveIntensity: 0.75 });
+    const metal = new MeshStandardMaterial({ color: '#dfe2ea', metalness: 0.85, roughness: 0.22, emissive: '#3a3a44', emissiveIntensity: 0.45 });
     const make = (geo: BufferGeometry, mat: Material, n: number) => {
       const im = new InstancedMesh(geo, mat, n);
       im.castShadow = true;
