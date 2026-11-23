@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0d6b3f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="description" content="Run Alex down 7th Ave to the pretzels in Penn Station before the fresh batch sells out.">
+<title>Alex's Pretzel Run</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A5%A8%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Archivo:wght@400;600;800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="stage" aria-hidden="true"></div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div class="hud-cash">
+    <div class="cash-row"><span class="pretzel-icon"></span><b id="cash">$0.00</b></div>
+    <div class="tierbar"><i id="tierFill"></i><span class="tick t1">★</span><span class="tick t2">★</span><span class="tick t3">★</span></div>
+  </div>
+  <div class="hud-center">
+    <div class="street-sign"><span id="streetName">7 AV &amp; W 50 ST</span></div>
+    <div id="blocksLeft" class="blocks">18 BLOCKS TO PENN</div>
+    <div class="progress"><i id="progressFill"></i><span id="progressDot" class="dot"></span><span class="pretzel-icon end"></span></div>
+  </div>
+  <div class="hud-right">
+    <div id="timer" class="timer"><small>FRESH BATCH</small><b id="timeLeft">1:50</b></div>
+    <button id="pauseBtn" class="icon-btn" aria-label="Pause">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+    </button>
+  </div>
+  <div id="powerups" class="hud-powerups"></div>
+  <div id="popups" class="popups"></div>
+  <div id="floaters" class="floaters"></div>
+  <div id="hint" class="hint hidden"></div>
+  <div id="countdown" class="countdown"></div>
+</div>
+
+<!-- EXPRESS -->
+<div id="express" class="express hidden" aria-hidden="true">
+  <div class="express-sign"><b>EXPRESS ◆</b><small id="expressNext">NEXT STOP</small></div>
+  <div class="express-windows"><div class="win"><i></i><i></i><i></i></div><div class="win"><i></i><i></i><i></i></div><div class="win wide"><i></i><i></i><i></i></div></div>
+  <div class="express-seat"></div>
+</div>
+
+<!-- TITLE -->
+<section id="sTitle" class="screen on" aria-label="Title">
+  <div class="card">
+    <div class="sign big"><div class="sign-in"><small>7 AV · MIDTOWN</small><h1>Alex's Pretzel Run</h1></div></div>
+    <div class="title-row">
+      <div id="faceTitle" class="face hidden"></div>
+      <p class="story">Alex just escaped the office, and a fresh batch is coming out of the oven at the pretzel counter in Penn Station. Get him down 7th Ave, grab enough loose cash to pay for his order, and get there before it sells out.</p>
+    </div>
+    <div class="menu-board" aria-label="Today's order">
+      <div class="menu-h">Today's order</div>
+      <div class="menu-row"><span><span class="stars">★</span>The Original</span><span class="price" id="p1"></span></div>
+      <div class="menu-row"><span><span class="stars">★★</span>Pretzel + Lemonade</span><span class="price" id="p2"></span></div>
+      <div class="menu-row"><span><span class="stars">★★★</span><b>Alex's Usual</b></span><span class="price" id="p3"></span></div>
+    </div>
+    <button class="btn" id="bDaily">Today's Run<small id="dailyLbl"></small></button>
+    <button class="btn sec" id="bPractice">Practice<small>A random route every time</small></button>
+    <p class="ctrl" id="ctrlHint"></p>
+    <div class="row foot">
+      <button class="chip" id="bSettings">⚙︎ Settings</button>
+      <div class="best" id="bestToday"></div>
+    </div>
+  </div>
+</section>
+
+<!-- PAUSE -->
+<section id="sPause" class="screen" aria-label="Paused">
+  <div class="card narrow">
+    <h2 class="card-h">Paused</h2>
+    <button class="btn" id="bResume">Resume</button>
+    <button class="btn sec" id="bRestart">Restart run</button>
+    <button class="btn sec" id="bQuit">Main menu</button>
+    <button class="chip" id="bSettings2">⚙︎ Settings</button>
+  </div>
+</section>
+
+<!-- SETTINGS -->
+<section id="sSettings" class="screen" aria-label="Settings">
+  <div class="card narrow">
+    <h2 class="card-h">Settings</h2>
+    <label class="toggle"><span>Music</span><input type="checkbox" id="optMusic"><i></i></label>
+    <label class="toggle"><span>Sound effects</span><input type="checkbox" id="optSfx"><i></i></label>
+    <label class="toggle"><span>Reduced motion</span><input type="checkbox" id="optMotion"><i></i></label>
+    <div class="seg" role="radiogroup" aria-label="Graphics quality">
+      <span>Graphics</span>
+      <div class="seg-opts" id="optQuality">
+        <button data-q="auto">Auto</button><button data-q="low">Low</button><button data-q="medium">Med</button><button data-q="high">High</button>
+      </div>
+    </div>
+    <p class="fine" id="qualityNote"></p>
+    <button class="btn" id="bSettingsDone">Done</button>
+  </div>
+</section>
+
+<!-- COUNTER (finish cutaway) -->
+<section id="sCounter" class="counter hidden" aria-hidden="true">
+  <div class="counter-sign">PRETZELS</div>
+  <div class="counter-case"><span></span><span></span><span></span><span></span><span></span></div>
+  <div class="counter-top"></div>
+</section>
+
+<!-- RESULT -->
+<section id="sResult" class="screen" aria-label="Result">
+  <div class="card">
+    <div class="result-head">
+      <div id="faceResult" class="face small hidden"></div>
+      <div>
+        <div class="result-stars" id="rStars"></div>
+        <div class="verdict" id="rVerdict"></div>
+      </div>
+    </div>
+    <p class="quip" id="rQuip"></p>
+    <div class="receipt" id="rReceipt"></div>
+    <div class="stats">
+      <div class="stat"><b id="rTime"></b><span>TIME LEFT</span></div>
+      <div class="stat"><b id="rStum"></b><span>STUMBLES</span></div>
+      <div class="stat"><b id="rPct"></b><span>CASH FOUND</span></div>
+    </div>
+    <textarea id="shareText" class="hidden" readonly></textarea>
+    <div id="copied" class="copied" role="status"></div>
+    <button class="btn" id="bShare">Copy for the group chat</button>
+    <div class="row">
+      <button class="btn sec" id="bAgain">Run it back</button>
+      <button class="btn sec" id="bMenu">Menu</button>
+    </div>
+  </div>
+</section>
+
+<div id="perf" class="perf hidden"></div>
+<noscript>This game needs JavaScript.</noscript>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
