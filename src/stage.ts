@@ -16,9 +16,12 @@ import { Post } from './fx/post.ts';
 import type { Run } from './sim/run.ts';
 import type { Tier } from './ui/settings.ts';
 import { buildAtlas, type Atlas } from './world/atlas.ts';
-import { City, PENN_DOOR } from './world/city.ts';
+import { City, PENN_DOOR, type CityMaterials } from './world/city.ts';
 import { groundHeight, toZ } from './world/layout.ts';
-import { billboardMaterial, glowMaterial, sharedUniforms, signMaterial, toyMaterial } from './world/materials.ts';
+import {
+  asphaltTexture, billboardMaterial, facadeMaterial, glowMaterial, groundMaterial, sharedUniforms, sidewalkTexture, signMaterial,
+  toyMaterial,
+} from './world/materials.ts';
 import { canyonEnvironment, HAZE, Sky } from './world/sky.ts';
 import { Traffic } from './world/traffic.ts';
 
@@ -47,7 +50,14 @@ export class Stage {
   readonly alex: AlexView;
   readonly atlas: Atlas;
   readonly sun = new DirectionalLight('#ffd2a0', 2.6);
-  readonly mats: { toy: Material; glow: Material; sign: Material };
+  /**
+   * Made once and shared by every run. Instanced meshes get their own copy of a material: three.js picks
+   * a shader per material, and one material drawn both plain and instanced makes it re-pick every frame.
+   */
+  readonly mats: { toy: Material; toyInstanced: Material; glow: Material; sign: Material };
+  private readonly cityMats: Omit<CityMaterials, 'facade'>;
+  /** the facade shader with and without its detail (off on the Low tier) */
+  private readonly facades = new Map<boolean, Material>();
   private readonly hemi = new HemisphereLight('#bcd4f2', '#8a6a4a', 0.55);
   private readonly sky: Sky;
   private readonly post: Post;
@@ -67,7 +77,16 @@ export class Stage {
     container.appendChild(this.renderer.domElement);
 
     this.atlas = buildAtlas();
-    this.mats = { toy: toyMaterial(), glow: glowMaterial(), sign: signMaterial(this.atlas) };
+    this.mats = { toy: toyMaterial(), toyInstanced: toyMaterial(), glow: glowMaterial(), sign: signMaterial(this.atlas) };
+    this.cityMats = {
+      toy: this.mats.toy,
+      glow: this.mats.glow,
+      sign: this.mats.sign,
+      signals: signMaterial(this.atlas),
+      sidewalk: groundMaterial(sidewalkTexture()),
+      road: groundMaterial(asphaltTexture()),
+      billboard: billboardMaterial(),
+    };
 
     this.scene.fog = new Fog(HAZE, 80, 330);
     this.scene.background = new Color(HAZE);
@@ -142,7 +161,9 @@ export class Stage {
   /** Tear down the previous run's world and build this one's. */
   load(run: Run): void {
     this.unload();
-    const city = new City(run.course, this.atlas, this.tier !== 'low');
+    const detail = this.tier !== 'low';
+    if (!this.facades.has(detail)) this.facades.set(detail, facadeMaterial(detail));
+    const city = new City(run.course, this.atlas, { ...this.cityMats, facade: this.facades.get(detail)! });
     const traffic = new Traffic(run.course, this.mats.toy, this.mats.glow, this.crowd);
     const obstacles = new Obstacles(this.mats, this.atlas, this.particles, this.crowd);
     const coins = new Coins(run.course.coins);
@@ -160,10 +181,10 @@ export class Stage {
    */
   warmUp(): void {
     const g = new Group();
-    const toyInstanced = new InstancedMesh(new BoxGeometry(), this.mats.toy, 1);
-    const signInstanced = new InstancedMesh(new BoxGeometry(), this.mats.sign, 1);
+    const toyInstanced = new InstancedMesh(new BoxGeometry(), this.mats.toyInstanced, 1);
+    const signInstanced = new InstancedMesh(new BoxGeometry(), this.cityMats.signals, 1);
     const glow = new Mesh(new BoxGeometry(), this.mats.glow);
-    const board = new Mesh(new PlaneGeometry(), billboardMaterial());
+    const board = new Mesh(new PlaneGeometry(), this.cityMats.billboard);
     const sprite = new Sprite(new SpriteMaterial({ blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
     for (const o of [toyInstanced, signInstanced, glow, board, sprite]) {
       o.position.set(0, -50, toZ(this.run?.dist ?? 0) - 10);
@@ -192,7 +213,7 @@ export class Stage {
     if (!w) return;
     w.city.dispose();
     w.traffic.dispose();
-    w.obstacles.clear();
+    w.obstacles.dispose();
     w.coins.dispose();
     w.powerups.clear();
     this.scene.remove(w.city.group, w.traffic.group, w.obstacles.group, w.coins.group, w.powerups.group);

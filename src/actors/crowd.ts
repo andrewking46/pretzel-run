@@ -46,6 +46,11 @@ export class Crowd {
     }
   }
 
+  /** Whether a ready-built person is waiting in this role (otherwise acquire builds one on the spot). */
+  has(role: Role): boolean {
+    return (this.free.get(role)?.length ?? 0) > 0;
+  }
+
   acquire(role: Role, variant: number): Person {
     const list = this.free.get(role);
     const p = list?.length ? list.splice(Math.floor(variant * list.length) % list.length, 1)[0] : make(role, variant);

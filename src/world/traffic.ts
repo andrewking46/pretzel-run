@@ -26,6 +26,7 @@ interface Walker {
 }
 
 const LANES = [-5.1, -8.1, -11.1, -14.1];
+const WALKERS = 6;
 const PAINT = ['#2b2f3a', '#8b8f99', '#e8e8e8', '#6b1f24', '#20385e', '#3d5a3c', '#a9a59d'];
 
 export class Traffic {
@@ -48,7 +49,8 @@ export class Traffic {
     this.glow = glow;
     this.rng = new Rng(deriveSeed(course.seed, 'traffic'));
     for (let i = 0; i < 9; i++) this.spawnCar(-20 + i * 26 + this.rng.range(0, 10));
-    for (let i = 0; i < 6; i++) this.spawnWalker(this.rng.range(-5, 110));
+    // only people already built: on the first title screen they're still being made, so they walk in later
+    for (let i = 0; i < WALKERS && crowd.has('stroller'); i++) this.spawnWalker(this.rng.range(-5, 110));
   }
 
   update(dist: number, dt: number): void {
@@ -106,6 +108,7 @@ export class Traffic {
         w.d = dist + this.rng.range(110, 150);
       }
     }
+    if (this.walkers.length < WALKERS && this.crowd.has('stroller')) this.spawnWalker(dist + this.rng.range(110, 150));
   }
 
   dispose(): void {

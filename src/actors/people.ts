@@ -1,6 +1,6 @@
 import { Bone, BoxGeometry, CapsuleGeometry, CylinderGeometry, Group, IcosahedronGeometry, MeshStandardMaterial, Skeleton, SkinnedMesh, SphereGeometry, TorusGeometry } from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { hinge, lathe, rigid, SkinBuilder } from './rig.ts';
+import { hinge, lathe, rigid, roundedBox, SkinBuilder } from './rig.ts';
+import { castsShadow } from '../world/materials.ts';
 
 // Chunky "toy" people. Each person is one SkinnedMesh whose parts are rigidly bound to 11 bones,
 // so a whole character is one draw call and every motion is a few bone rotations in code.
@@ -96,11 +96,11 @@ export function buildPerson(look: PersonLook): Person {
     b.add(leg, pants, hinge(thigh, shin, kneeY, 0.06), { x });
     if (look.dressShoes) {
       // polished oxfords: low, long, slightly pointed, thin dark sole
-      b.add(new RoundedBoxGeometry(0.115, 0.08, 0.28, 3, 0.038), shoes, rigid(shin), { x, y: 0.052, z: 0.055 });
-      b.add(new RoundedBoxGeometry(0.112, 0.016, 0.275, 2, 0.006), '#1a120c', rigid(shin), { x, y: 0.01, z: 0.055 });
+      b.add(roundedBox(0.115, 0.08, 0.28, 3, 0.038), shoes, rigid(shin), { x, y: 0.052, z: 0.055 });
+      b.add(roundedBox(0.112, 0.016, 0.275, 2, 0.006), '#1a120c', rigid(shin), { x, y: 0.01, z: 0.055 });
     } else {
-      b.add(new RoundedBoxGeometry(0.13, 0.09, 0.27, 3, 0.045), shoes, rigid(shin), { x, y: 0.055, z: 0.05 });
-      b.add(new RoundedBoxGeometry(0.136, 0.032, 0.28, 2, 0.014), shoes === '#f2f2f2' || shoes === '#f4f4f4' ? '#d6d6d6' : '#f2f2f2', rigid(shin), { x, y: 0.017, z: 0.05 });
+      b.add(roundedBox(0.13, 0.09, 0.27, 3, 0.045), shoes, rigid(shin), { x, y: 0.055, z: 0.05 });
+      b.add(roundedBox(0.136, 0.032, 0.28, 2, 0.014), shoes === '#f2f2f2' || shoes === '#f4f4f4' ? '#d6d6d6' : '#f2f2f2', rigid(shin), { x, y: 0.017, z: 0.05 });
     }
   }
 
@@ -119,33 +119,33 @@ export function buildPerson(look: PersonLook): Person {
   // Clothing details on the chest (the torso front sits at z ≈ 0.14 at chest height)
   const front = (y: number) => 0.7 * (y > HIP_Y + 0.3 ? 0.195 : 0.165);
   if (style === 'hoodie') {
-    b.add(new RoundedBoxGeometry(0.3, 0.2, 0.14, 3, 0.06), shade(top, 0.85), rigid(SPINE), { y: shoulderY + 0.06, z: -0.12 });
-    b.add(new RoundedBoxGeometry(0.24, 0.12, 0.03, 2, 0.015), shade(top, 0.88), rigid(SPINE), { y: HIP_Y + 0.16, z: front(HIP_Y + 0.16) });
+    b.add(roundedBox(0.3, 0.2, 0.14, 3, 0.06), shade(top, 0.85), rigid(SPINE), { y: shoulderY + 0.06, z: -0.12 });
+    b.add(roundedBox(0.24, 0.12, 0.03, 2, 0.015), shade(top, 0.88), rigid(SPINE), { y: HIP_Y + 0.16, z: front(HIP_Y + 0.16) });
     for (const sx of [-1, 1]) b.add(new CapsuleGeometry(0.01, 0.12, 2, 6), '#e8e4dc', rigid(SPINE), { x: sx * 0.05, y: HIP_Y + 0.4, z: front(HIP_Y + 0.4) + 0.008 });
   }
-  if (style === 'jacket') b.add(new RoundedBoxGeometry(0.03, 0.5, 0.02, 2, 0.008), shade(top, 0.65), rigid(SPINE), { y: HIP_Y + 0.28, z: front(HIP_Y + 0.35) - 0.004 });
+  if (style === 'jacket') b.add(roundedBox(0.03, 0.5, 0.02, 2, 0.008), shade(top, 0.65), rigid(SPINE), { y: HIP_Y + 0.28, z: front(HIP_Y + 0.35) - 0.004 });
   if (style === 'tee') b.add(lathe([[shoulderY + 0.02, 0.07], [shoulderY + 0.05, 0.068]], 16), shade(top, 0.9), rigid(SPINE));
   if (suit) {
     const tie = look.tie ?? '#a3242f';
-    b.add(new RoundedBoxGeometry(0.13, 0.2, 0.02, 2, 0.008), shirt, rigid(SPINE), { y: shoulderY - 0.08, z: 0.13, rx: -0.12 });
+    b.add(roundedBox(0.13, 0.2, 0.02, 2, 0.008), shirt, rigid(SPINE), { y: shoulderY - 0.08, z: 0.13, rx: -0.12 });
     b.add(lathe([[shoulderY + 0.02, 0.072], [shoulderY + 0.07, 0.068]], 16), shirt, rigid(SPINE));
-    b.add(new RoundedBoxGeometry(0.05, 0.27, 0.016, 2, 0.007), tie, rigid(SPINE), { y: shoulderY - 0.15, z: 0.142, rx: -0.1 });
-    b.add(new RoundedBoxGeometry(0.065, 0.045, 0.026, 2, 0.011), shade(tie, 0.85), rigid(SPINE), { y: shoulderY + 0.005, z: 0.13 });
-    for (const sx of [-1, 1]) b.add(new RoundedBoxGeometry(0.06, 0.28, 0.014, 2, 0.006), shade(top, 1.15), rigid(SPINE), { x: sx * 0.08, y: shoulderY - 0.1, z: 0.135, rz: sx * 0.3, rx: -0.1 });
-    b.add(new RoundedBoxGeometry(0.05, 0.03, 0.012, 2, 0.005), '#ece6d6', rigid(SPINE), { x: -0.125, y: shoulderY - 0.07, z: 0.138 });
+    b.add(roundedBox(0.05, 0.27, 0.016, 2, 0.007), tie, rigid(SPINE), { y: shoulderY - 0.15, z: 0.142, rx: -0.1 });
+    b.add(roundedBox(0.065, 0.045, 0.026, 2, 0.011), shade(tie, 0.85), rigid(SPINE), { y: shoulderY + 0.005, z: 0.13 });
+    for (const sx of [-1, 1]) b.add(roundedBox(0.06, 0.28, 0.014, 2, 0.006), shade(top, 1.15), rigid(SPINE), { x: sx * 0.08, y: shoulderY - 0.1, z: 0.135, rz: sx * 0.3, rx: -0.1 });
+    b.add(roundedBox(0.05, 0.03, 0.012, 2, 0.005), '#ece6d6', rigid(SPINE), { x: -0.125, y: shoulderY - 0.07, z: 0.138 });
     for (const y of [HIP_Y + 0.22, HIP_Y + 0.11]) b.add(new SphereGeometry(0.013, 8, 6), shade(top, 0.5), rigid(SPINE), { x: 0.03, y, z: front(y) + 0.002 });
-    b.add(new RoundedBoxGeometry(0.012, 0.12, 0.01, 1, 0.004), shade(top, 0.6), rigid(ROOT), { y: HIP_Y - 0.0, z: -0.128 });
+    b.add(roundedBox(0.012, 0.12, 0.01, 1, 0.004), shade(top, 0.6), rigid(ROOT), { y: HIP_Y - 0.0, z: -0.128 });
   }
-  if (look.chest) b.add(new RoundedBoxGeometry(0.2, 0.11, 0.02, 2, 0.008), look.chest, rigid(SPINE), { y: HIP_Y + 0.34, z: front(HIP_Y + 0.34) });
-  if (look.apron) b.add(new RoundedBoxGeometry(0.32, 0.55, 0.02, 2, 0.008), '#f2f2f2', rigid(SPINE), { y: HIP_Y + 0.12, z: 0.125 });
+  if (look.chest) b.add(roundedBox(0.2, 0.11, 0.02, 2, 0.008), look.chest, rigid(SPINE), { y: HIP_Y + 0.34, z: front(HIP_Y + 0.34) });
+  if (look.apron) b.add(roundedBox(0.32, 0.55, 0.02, 2, 0.008), '#f2f2f2', rigid(SPINE), { y: HIP_Y + 0.12, z: 0.125 });
   if (look.backpack) {
-    b.add(new RoundedBoxGeometry(0.3, 0.4, 0.16, 3, 0.06), look.backpack, rigid(SPINE), { y: HIP_Y + 0.3, z: -0.19 });
-    b.add(new RoundedBoxGeometry(0.22, 0.13, 0.05, 2, 0.025), shade(look.backpack, 0.8), rigid(SPINE), { y: HIP_Y + 0.18, z: -0.28 });
-    for (const sx of [-1, 1]) b.add(new RoundedBoxGeometry(0.035, 0.36, 0.02, 1, 0.008), shade(look.backpack, 0.7), rigid(SPINE), { x: sx * 0.1, y: HIP_Y + 0.34, z: 0.13 });
+    b.add(roundedBox(0.3, 0.4, 0.16, 3, 0.06), look.backpack, rigid(SPINE), { y: HIP_Y + 0.3, z: -0.19 });
+    b.add(roundedBox(0.22, 0.13, 0.05, 2, 0.025), shade(look.backpack, 0.8), rigid(SPINE), { y: HIP_Y + 0.18, z: -0.28 });
+    for (const sx of [-1, 1]) b.add(roundedBox(0.035, 0.36, 0.02, 1, 0.008), shade(look.backpack, 0.7), rigid(SPINE), { x: sx * 0.1, y: HIP_Y + 0.34, z: 0.13 });
   }
   if (look.deliveryBox) {
-    b.add(new RoundedBoxGeometry(0.56, 0.5, 0.42, 3, 0.05), look.deliveryBox, rigid(SPINE), { y: HIP_Y + 0.5, z: -0.36 });
-    b.add(new RoundedBoxGeometry(0.5, 0.05, 0.36, 2, 0.02), shade(look.deliveryBox, 1.25), rigid(SPINE), { y: HIP_Y + 0.75, z: -0.36 });
+    b.add(roundedBox(0.56, 0.5, 0.42, 3, 0.05), look.deliveryBox, rigid(SPINE), { y: HIP_Y + 0.5, z: -0.36 });
+    b.add(roundedBox(0.5, 0.05, 0.36, 2, 0.02), shade(look.deliveryBox, 1.25), rigid(SPINE), { y: HIP_Y + 0.75, z: -0.36 });
   }
 
   // Head and face
@@ -165,8 +165,8 @@ export function buildPerson(look: PersonLook): Person {
   // a small smile
   b.add(new TorusGeometry(r * 0.16, r * 0.03, 6, 12, Math.PI), '#9a4c42', H, { y: headY - r * 0.3, z: r * 0.92, rz: Math.PI, rx: -0.25 });
   if (look.glasses) {
-    for (const sx of [-1, 1]) b.add(new RoundedBoxGeometry(r * 0.52, r * 0.38, 0.012, 2, 0.008), '#141414', H, { x: sx * r * 0.36, y: headY + r * 0.13, z: r * 0.99 });
-    b.add(new RoundedBoxGeometry(r * 0.24, 0.012, 0.012, 1, 0.004), '#141414', H, { y: headY + r * 0.2, z: r * 1.0 });
+    for (const sx of [-1, 1]) b.add(roundedBox(r * 0.52, r * 0.38, 0.012, 2, 0.008), '#141414', H, { x: sx * r * 0.36, y: headY + r * 0.13, z: r * 0.99 });
+    b.add(roundedBox(r * 0.24, 0.012, 0.012, 1, 0.004), '#141414', H, { y: headY + r * 0.2, z: r * 1.0 });
   }
   const hairCap = (tilt: number, coverage: number, grow = 1.07) =>
     b.add(new SphereGeometry(r * grow, 26, 14, 0, Math.PI * 2, 0, coverage), look.hair, H, { y: headY + r * 0.02, rx: -tilt });
@@ -175,7 +175,7 @@ export function buildPerson(look: PersonLook): Person {
       break;
     case 'long':
       hairCap(0.35, 1.7);
-      b.add(new RoundedBoxGeometry(r * 1.9, r * 1.9, r * 0.7, 3, r * 0.3), look.hair, H, { y: headY - r * 0.55, z: -r * 0.55 });
+      b.add(roundedBox(r * 1.9, r * 1.9, r * 0.7, 3, r * 0.3), look.hair, H, { y: headY - r * 0.55, z: -r * 0.55 });
       break;
     case 'bun':
       hairCap(0.3, 1.6);
@@ -193,21 +193,21 @@ export function buildPerson(look: PersonLook): Person {
   }
   if (look.cap) {
     b.add(new SphereGeometry(r * 1.1, 22, 10, 0, Math.PI * 2, 0, Math.PI / 2), look.cap, H, { y: headY + r * 0.2 });
-    b.add(new RoundedBoxGeometry(r * 1.5, 0.03, r * 0.9, 2, 0.012), look.cap, H, { y: headY + r * 0.22, z: r * 1.05 });
+    b.add(roundedBox(r * 1.5, 0.03, r * 0.9, 2, 0.012), look.cap, H, { y: headY + r * 0.22, z: r * 1.05 });
   }
 
   // things in hand
   const F = rigid(FORE_R);
   if (look.phone) {
-    b.add(new RoundedBoxGeometry(0.08, 0.15, 0.02, 2, 0.012), '#111', F, { x: SHOULDER[0], y: handY + 0.05, z: 0.07 });
-    b.add(new RoundedBoxGeometry(0.066, 0.13, 0.004, 2, 0.002), '#8fd3ff', F, { x: SHOULDER[0], y: handY + 0.05, z: 0.081 });
+    b.add(roundedBox(0.08, 0.15, 0.02, 2, 0.012), '#111', F, { x: SHOULDER[0], y: handY + 0.05, z: 0.07 });
+    b.add(roundedBox(0.066, 0.13, 0.004, 2, 0.002), '#8fd3ff', F, { x: SHOULDER[0], y: handY + 0.05, z: 0.081 });
   }
   if (look.camera) {
-    b.add(new RoundedBoxGeometry(0.2, 0.13, 0.1, 3, 0.03), '#1a1a1a', F, { x: SHOULDER[0] - 0.08, y: handY + 0.04, z: 0.06 });
+    b.add(roundedBox(0.2, 0.13, 0.1, 3, 0.03), '#1a1a1a', F, { x: SHOULDER[0] - 0.08, y: handY + 0.04, z: 0.06 });
     b.add(new CylinderGeometry(0.045, 0.045, 0.09, 16), '#445', F, { x: SHOULDER[0] - 0.08, y: handY + 0.04, z: 0.13, rx: Math.PI / 2 });
   }
   if (look.map) {
-    b.add(new RoundedBoxGeometry(0.46, 0.02, 0.32, 2, 0.008), '#f4f1e1', F, { x: SHOULDER[0] - 0.23, y: handY + 0.02, z: 0.12 });
+    b.add(roundedBox(0.46, 0.02, 0.32, 2, 0.008), '#f4f1e1', F, { x: SHOULDER[0] - 0.23, y: handY + 0.02, z: 0.12 });
     b.add(new BoxGeometry(0.14, 0.024, 0.1), '#8fb3d9', F, { x: SHOULDER[0] - 0.33, y: handY + 0.022, z: 0.08 });
     b.add(new BoxGeometry(0.12, 0.024, 0.08), '#e07a5f', F, { x: SHOULDER[0] - 0.12, y: handY + 0.022, z: 0.16 });
   }
@@ -239,7 +239,7 @@ export function buildPerson(look: PersonLook): Person {
   const mesh = new SkinnedMesh(geometry, personMaterial());
   mesh.add(bones.root);
   mesh.bind(new Skeleton(BONES.map(n => bones[n])));
-  mesh.castShadow = true;
+  castsShadow(mesh);
   mesh.frustumCulled = false;
   const object = new Group();
   object.add(mesh);

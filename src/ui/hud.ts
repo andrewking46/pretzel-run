@@ -26,7 +26,9 @@ export class Hud {
   private readonly hint = $('hint');
   private readonly countdown = $('countdown');
   private readonly express = $('express');
-  private last = { cash: -1, time: '', street: -1, slice: false, cat: false, low: false };
+  private last = { cash: -1, time: '', street: -1, low: false, blocks: '', progress: -1 };
+  /** power-up timer rings on screen, with the last dash offset written to each */
+  private readonly rings = new Map<'slice' | 'cat', { el: HTMLElement; arc: SVGCircleElement; offset: number }>();
   private hintUntil = 0;
 
   constructor() {
@@ -44,15 +46,17 @@ export class Hud {
   }
 
   reset(run: Run): void {
-    this.last = { cash: -1, time: '', street: -1, slice: false, cat: false, low: false };
+    this.last = { cash: -1, time: '', street: -1, low: false, blocks: '', progress: -1 };
     this.popups.replaceChildren();
     this.floaters.replaceChildren();
     this.countdown.replaceChildren();
     this.powerups.replaceChildren();
+    this.rings.clear();
     this.showExpress(false);
     this.update(run);
   }
 
+  /** Called every frame, so it writes to the page only when something it shows has changed. */
   update(run: Run): void {
     if (run.cash !== this.last.cash) {
       const up = run.cash > this.last.cash && this.last.cash >= 0;
@@ -87,29 +91,43 @@ export class Hud {
     }
     const finish = run.level.landmarks.finishStreet;
     const left = Math.max(0, run.street - finish);
-    this.blocks.textContent = run.dist >= run.level.length - 70 ? 'PENN STATION AHEAD' : `${left} BLOCK${left === 1 ? '' : 'S'} TO PENN`;
-    const pct = `${run.progress * 100}%`;
-    this.progress.style.width = pct;
-    this.dot.style.left = pct;
+    const blocks = run.dist >= run.level.length - 70 ? 'PENN STATION AHEAD' : `${left} BLOCK${left === 1 ? '' : 'S'} TO PENN`;
+    if (blocks !== this.last.blocks) {
+      this.blocks.textContent = blocks;
+      this.last.blocks = blocks;
+    }
+    // in steps of 0.1% (about 1.4 m of route), so the bar moves a few times a second instead of every frame
+    const progress = Math.round(run.progress * 1000) / 10;
+    if (progress !== this.last.progress) {
+      this.progress.style.width = `${progress}%`;
+      this.dot.style.left = `${progress}%`;
+      this.last.progress = progress;
+    }
     this.ring('slice', run.sliceT, 5, '🍕', '#ffb347');
     this.ring('cat', run.catT, 9, '🐈', '#ffd28a');
     if (this.hintUntil && performance.now() > this.hintUntil) this.hideHint();
   }
 
   private ring(kind: 'slice' | 'cat', t: number, total: number, icon: string, color: string): void {
-    let el = this.powerups.querySelector<HTMLElement>(`[data-k="${kind}"]`);
+    let ring = this.rings.get(kind);
     if (t <= 0) {
-      el?.remove();
+      ring?.el.remove();
+      this.rings.delete(kind);
       return;
     }
-    if (!el) {
-      el = document.createElement('div');
+    if (!ring) {
+      const el = document.createElement('div');
       el.className = 'pu';
-      el.dataset.k = kind;
       el.innerHTML = `<svg viewBox="0 0 56 56"><circle cx="28" cy="28" r="24" stroke="rgba(255,255,255,.15)"/><circle class="arc" cx="28" cy="28" r="24" stroke="${color}" stroke-dasharray="150.8" /></svg><span>${icon}</span>`;
       this.powerups.appendChild(el);
+      ring = { el, arc: el.querySelector<SVGCircleElement>('.arc')!, offset: -1 };
+      this.rings.set(kind, ring);
     }
-    (el.querySelector('.arc') as SVGCircleElement).style.strokeDashoffset = `${150.8 * (1 - t / total)}`;
+    const offset = Math.round(150.8 * (1 - t / total) * 2) / 2;
+    if (offset !== ring.offset) {
+      ring.arc.style.strokeDashoffset = `${offset}`;
+      ring.offset = offset;
+    }
   }
 
   popup(text: string, color = '#fff', small = false): void {

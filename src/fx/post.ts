@@ -3,36 +3,34 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { FXAAPass } from 'three/addons/postprocessing/FXAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import type { Tier } from '../ui/settings.ts';
 
 // Post-processing per quality tier.
 //  low:    none (straight to screen)
-//  medium: bloom at half resolution
-//  high:   MSAA, bloom, and a grade pass (warm highlights, teal shadows, gentle vignette)
+//  medium: bloom at half resolution, the grade, FXAA
+//  high:   MSAA, bloom, the grade
 
-const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, uVignette: { value: 0.28 } },
-  vertexShader: /* glsl */ `
-    varying vec2 vUv;
-    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: /* glsl */ `
-    uniform sampler2D tDiffuse;
-    uniform float uVignette;
-    varying vec2 vUv;
-    void main() {
-      vec4 c = texture2D(tDiffuse, vUv);
-      float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
-      vec3 shadows = vec3(-0.012, 0.01, 0.03);
-      vec3 highlights = vec3(0.035, 0.012, -0.03);
-      c.rgb += mix(shadows, highlights, smoothstep(0.2, 0.8, l));
-      c.rgb = mix(vec3(l), c.rgb, 1.06);
-      float v = smoothstep(0.85, 0.25, length(vUv - 0.5) * 1.25);
-      c.rgb *= mix(1.0 - uVignette, 1.0, v);
-      gl_FragColor = c;
-    }`,
-};
+// The grade: warm highlights, teal shadows, a gentle vignette. Runs on the tone-mapped sRGB color.
+const GRADE = /* glsl */ `
+  float l = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
+  vec3 shadows = vec3(-0.012, 0.01, 0.03);
+  vec3 highlights = vec3(0.035, 0.012, -0.03);
+  gl_FragColor.rgb += mix(shadows, highlights, smoothstep(0.2, 0.8, l));
+  gl_FragColor.rgb = mix(vec3(l), gl_FragColor.rgb, 1.06);
+  float v = smoothstep(0.85, 0.25, length(vUv - 0.5) * 1.25);
+  gl_FragColor.rgb *= mix(1.0 - uVignette, 1.0, v);
+`;
+
+/** Tone mapping, sRGB and the grade in one full-screen pass, so each frame reads and writes the screen once less. */
+function gradedOutputPass(): OutputPass {
+  const pass = new OutputPass();
+  pass.uniforms.uVignette = { value: 0.28 };
+  pass.material.fragmentShader = pass.material.fragmentShader
+    .replace('varying vec2 vUv;', 'uniform float uVignette;\nvarying vec2 vUv;')
+    .replace(/}\s*$/, `${GRADE}}`);
+  return pass;
+}
 
 export class Post {
   private composer: EffectComposer | null = null;
@@ -50,6 +48,7 @@ export class Post {
 
   configure(tier: Tier, width: number, height: number): void {
     this.tier = tier;
+    for (const pass of this.composer?.passes ?? []) pass.dispose();
     this.composer?.dispose();
     this.composer = null;
     this.bloom = null;
@@ -61,8 +60,7 @@ export class Post {
     const scale = tier === 'high' ? 1 : 0.5;
     this.bloom = new UnrealBloomPass(new Vector2(width * scale, height * scale), tier === 'high' ? 0.55 : 0.45, 0.5, 0.92);
     composer.addPass(this.bloom);
-    composer.addPass(new OutputPass());
-    composer.addPass(new ShaderPass(GradeShader));
+    composer.addPass(gradedOutputPass());
     if (tier === 'medium') composer.addPass(new FXAAPass());
     composer.setSize(width, height);
     this.composer = composer;

@@ -7,12 +7,13 @@ export class AudioEngine {
   musicBus!: GainNode;
   private noiseBuf: AudioBuffer | null = null;
   private sfxOn = true;
-  private musicOn = true;
+  musicOn = true;
+  private sleepTimer: ReturnType<typeof setTimeout> | undefined;
 
   /** Must run inside a user gesture on iOS. Safe to call repeatedly. */
   unlock(): void {
     if (this.ctx) {
-      if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {});
+      this.resume();
       return;
     }
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -52,16 +53,27 @@ export class AudioEngine {
   }
 
   suspend(): void {
+    clearTimeout(this.sleepTimer);
     void this.ctx?.suspend().catch(() => {});
   }
 
   resume(): void {
-    void this.ctx?.resume().catch(() => {});
+    clearTimeout(this.sleepTimer);
+    if (this.ctx?.state === 'suspended') void this.ctx.resume().catch(() => {});
+  }
+
+  /**
+   * A running audio context keeps the audio hardware awake even when it's silent, so the menus, pause
+   * and the result card let it sleep once their last sound has played. The next tap wakes it (unlock).
+   */
+  sleepSoon(ms = 1500): void {
+    clearTimeout(this.sleepTimer);
+    if (this.ctx) this.sleepTimer = setTimeout(() => this.suspend(), ms);
   }
 
   tone(f: number, dur: number, type: OscillatorType = 'square', vol = 0.15, when = 0, f2: number | null = null, dest?: AudioNode): void {
     const c = this.ctx;
-    if (!c) return;
+    if (!c || (!dest && !this.sfxOn)) return;
     const t = c.currentTime + when;
     const o = c.createOscillator();
     const g = c.createGain();
@@ -78,7 +90,7 @@ export class AudioEngine {
 
   noise(dur: number, vol = 0.2, when = 0, freq = 2000, type: BiquadFilterType = 'bandpass', dest?: AudioNode, q = 1): void {
     const c = this.ctx;
-    if (!c) return;
+    if (!c || (!dest && !this.sfxOn)) return;
     if (!this.noiseBuf) {
       this.noiseBuf = c.createBuffer(1, c.sampleRate, c.sampleRate);
       const d = this.noiseBuf.getChannelData(0);

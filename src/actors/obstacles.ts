@@ -7,6 +7,7 @@ import type { Run } from '../sim/run.ts';
 import type { Particles } from '../fx/particles.ts';
 import type { Atlas } from '../world/atlas.ts';
 import { toZ } from '../world/layout.ts';
+import { castsShadow } from '../world/materials.ts';
 import {
   assemble, carGeometry, cartGeometry, cartSign, cellarGeometry, ebikeGeometry, ebikeLamp, pigeonGeometry,
   plywoodSign, sawhorseGeometry, shedGeometry, shedLights, steamStackGeometry, trashGeometry,
@@ -20,6 +21,8 @@ import { pose, type Motion, type Person } from './people.ts';
 
 export interface ObstacleMaterials {
   toy: Material;
+  /** the toy material for instanced meshes (see Stage.mats) */
+  toyInstanced: Material;
   glow: Material;
   sign: Material;
 }
@@ -63,11 +66,11 @@ export class Obstacles {
     this.mats = mats;
     this.atlas = atlas;
     this.particles = particles;
-    this.blobs = new InstancedMesh(
+    blobLook ??= [
       new PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
       new MeshBasicMaterial({ map: radialTexture('rgba(0,0,0,0.42)', 'rgba(0,0,0,0)'), transparent: true, depthWrite: false }),
-      64,
-    );
+    ];
+    this.blobs = new InstancedMesh(...blobLook, 64);
     this.blobs.renderOrder = 2;
     this.blobs.frustumCulled = false;
     this.group.add(this.blobs);
@@ -121,8 +124,9 @@ export class Obstacles {
     this.blobs.instanceMatrix.needsUpdate = true;
   }
 
-  clear(): void {
+  dispose(): void {
     for (const id of [...this.views.keys()]) this.remove(id);
+    this.blobs.dispose();
   }
 
   private remove(id: number): void {
@@ -255,8 +259,8 @@ export class Obstacles {
         break;
       }
       case 'pigeons': {
-        const birds = new InstancedMesh(pigeonGeometry(), toy, 7);
-        birds.castShadow = true;
+        const birds = new InstancedMesh(pigeonGeometry(), this.mats.toyInstanced, 7);
+        castsShadow(birds);
         birds.frustumCulled = false;
         root.add(birds);
         const flock = Array.from({ length: 7 }, (_, i) => ({ x: Math.sin(i * 2.4 + o.variant * 9) * 1.6, z: Math.cos(i * 1.7 + o.variant * 5) * 1.3, y: 0, vx: 0, vy: 0, vz: 0, ry: i * 0.9, ph: i * 1.3 }));
@@ -357,7 +361,13 @@ export class Obstacles {
   }
 }
 
+const radials = new Map<string, CanvasTexture>();
+
+/** A soft round glow from `inner` at the center to `outer` at the edge, painted once per color pair. */
 function radialTexture(inner: string, outer: string): CanvasTexture {
+  const key = `${inner}|${outer}`;
+  const cached = radials.get(key);
+  if (cached) return cached;
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const g = c.getContext('2d')!;
@@ -366,7 +376,11 @@ function radialTexture(inner: string, outer: string): CanvasTexture {
   grad.addColorStop(1, outer);
   g.fillStyle = grad;
   g.fillRect(0, 0, 64, 64);
-  return new CanvasTexture(c);
+  const texture = new CanvasTexture(c);
+  radials.set(key, texture);
+  return texture;
 }
+
+let blobLook: [BufferGeometry, Material] | null = null;
 
 export { radialTexture };

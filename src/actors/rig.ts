@@ -1,6 +1,7 @@
-import { BufferAttribute, Color, Euler, LatheGeometry, Matrix4, Quaternion, Vector2, Vector3, type BufferGeometry } from 'three';
+import { BufferAttribute, BufferGeometry, Euler, LatheGeometry, Matrix4, Quaternion, Vector2, Vector3 } from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { ColorLike, Place } from '../world/builder.ts';
+import { colorOf, type ColorLike, type Place } from '../world/builder.ts';
 
 // Builds one skinned geometry from many shapes. Each vertex gets a color and up to two bone weights
 // computed from its bind-pose position, so a leg can be one sculpted shape that bends smoothly at the knee.
@@ -26,13 +27,22 @@ export function lathe(profile: readonly (readonly [number, number])[], segments 
   return new LatheGeometry(pts, segments);
 }
 
+const boxes = new Map<string, RoundedBoxGeometry>();
+
+/** A rounded box, generated once per size and copied after: people reuse the same few dozen shapes. */
+export function roundedBox(width: number, height: number, depth: number, segments: number, radius: number): BufferGeometry {
+  const key = `${width},${height},${depth},${segments},${radius}`;
+  let box = boxes.get(key);
+  if (!box) boxes.set(key, (box = new RoundedBoxGeometry(width, height, depth, segments, radius)));
+  return new BufferGeometry().copy(box); // not box.clone(), which would build a default rounded box first
+}
+
 const m4 = new Matrix4();
 const q = new Quaternion();
 const e = new Euler();
 const s = new Vector3();
 const t = new Vector3();
 const v = new Vector3();
-const c = new Color();
 
 export class SkinBuilder {
   private parts: BufferGeometry[] = [];
@@ -51,10 +61,13 @@ export class SkinBuilder {
     const colors = new Float32Array(n * 3);
     const idx = new Uint16Array(n * 4);
     const w = new Float32Array(n * 4);
+    const flat = typeof paint === 'function' ? null : colorOf(paint);
     for (let i = 0; i < n; i++) {
       v.fromBufferAttribute(pos, i);
-      c.set(typeof paint === 'function' ? paint(v) : paint);
-      colors.set([c.r, c.g, c.b], i * 3);
+      const c = flat ?? colorOf((paint as (p: Vector3) => ColorLike)(v));
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
       const [a, b, wb] = skin(v);
       idx[i * 4] = a;
       idx[i * 4 + 1] = b;

@@ -45,7 +45,15 @@ export class Game {
   private daily = true;
   private dayKey = todayKey();
   private acc = 0;
+  /** when the last frame was drawn */
   private last = performance.now();
+  /** when the browser last called back, and its smoothed refresh interval in ms */
+  private lastCallback = performance.now();
+  private refresh = 1000 / 60;
+  /** draw one frame even though nothing on screen is moving (after a resize or a quality change) */
+  private redraw = true;
+  /** while the express overlay fully covers the street (from this time until it lands), skip drawing it */
+  private coveredFrom = Infinity;
   private slowMo = 0;
   private lastDevice: Device = isTouchDevice() ? 'touch' : 'keyboard';
   private readonly face: string | null = __HAS_FACE__ ? ALEX_FACE_URL : null;
@@ -58,23 +66,33 @@ export class Game {
     this.stage.setTier(settings.tier);
     this.stage.onTierChange = () => this.stage.warmUp();
     this.applySettings();
-    settings.subscribe(() => this.applySettings());
+    settings.subscribe(() => {
+      this.applySettings();
+      this.redraw = true;
+    });
     this.hud.setFace(this.face);
 
     const handle = (cmd: Command, device: Device) => this.command(cmd, device);
     listenKeyboard(handle);
     listenTouch(container, handle);
     this.gamepad = new GamepadInput(handle);
-    const unlock = () => audio.unlock();
+    // every tap may be the first (iOS only starts audio inside one); off the street, let it sleep again
+    const unlock = () => {
+      audio.unlock();
+      if (this.mode !== 'play' && this.mode !== 'outro') audio.sleepSoon(this.mode === 'result' ? 4000 : 1500);
+    };
     window.addEventListener('pointerdown', unlock, { capture: true });
     window.addEventListener('keydown', unlock, { capture: true });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         if (this.mode === 'play') this.pause();
         audio.suspend();
-      } else audio.resume();
+      } else if (this.mode === 'outro') audio.resume();
     });
-    const resize = () => this.stage.resize(window.innerWidth, window.innerHeight);
+    const resize = () => {
+      this.stage.resize(window.innerWidth, window.innerHeight);
+      this.redraw = true;
+    };
     window.addEventListener('resize', resize);
     window.visualViewport?.addEventListener('resize', resize);
     resize();
@@ -96,7 +114,9 @@ export class Game {
 
   toTitle(): void {
     this.mode = 'title';
+    this.coveredFrom = Infinity;
     this.music.stop();
+    audio.sleepSoon();
     this.hud.show(false);
     this.hud.showExpress(false);
     this.screens.counter(false);
@@ -119,18 +139,21 @@ export class Game {
     this.screens.counter(false);
     this.mode = 'play';
     this.acc = 0;
+    this.coveredFrom = Infinity;
   }
 
   pause(): void {
     if (this.mode !== 'play') return;
     this.mode = 'paused';
     this.music.stop();
+    audio.sleepSoon(300);
     this.screens.show('sPause');
   }
 
   resume(): void {
     if (this.mode !== 'paused') return;
     this.mode = 'play';
+    audio.unlock();
     this.screens.show(null);
     if (this.run?.mode === 'run') this.music.start();
     this.last = performance.now();
@@ -187,15 +210,41 @@ export class Game {
 
   // ------------------------------------------------------------------ loop
 
+  /**
+   * How often to draw, by what's on screen. Play runs at 60 fps (also on 120 Hz screens, which halves the
+   * work there). The title's demo run is backdrop, so 30 fps once the quality probe is done. Pause and the
+   * result card show a still scene, so nothing is drawn until something changes.
+   */
+  private targetFps(): number {
+    if (this.mode === 'paused' || this.mode === 'result') return 0;
+    if (this.mode === 'title') return this.probe.done || settings.current.quality !== 'auto' ? 30 : 1000;
+    return 60;
+  }
+
   private frame = (now: number): void => {
     requestAnimationFrame(this.frame);
-    let dt = (now - this.last) / 1000;
+    const gap = now - this.lastCallback;
+    this.lastCallback = now;
+    if (gap > 0 && gap < this.refresh * 1.5) this.refresh += (gap - this.refresh) * 0.1;
+    this.gamepad.poll();
+
+    const fps = this.targetFps();
+    if (!fps && !this.redraw) {
+      this.last = now;
+      return;
+    }
+    if (fps) {
+      // draw on every n-th refresh, rounding toward more frames (a 90 Hz screen keeps 90; 120 Hz draws 60)
+      const every = Math.max(1, Math.floor(1000 / fps / this.refresh + 0.1));
+      if (now - this.last < (every - 0.5) * this.refresh) return;
+    }
+
+    let dt = fps ? (now - this.last) / 1000 : 0;
     this.last = now;
     if (dt > 0.1) dt = 0.1;
-    if (dt <= 0) return;
+    if (fps && dt <= 0) return;
     this.frameTimes.push(dt * 1000);
-    if (this.frameTimes.length > 600) this.frameTimes.shift();
-    this.gamepad.poll();
+    if (this.frameTimes.length > 600) this.frameTimes.splice(0, 300);
 
     const run = this.run;
     if (run && (this.mode === 'play' || this.mode === 'title' || this.mode === 'outro')) {
@@ -216,8 +265,9 @@ export class Game {
       if (this.mode === 'title' && run.mode === 'result') this.startDemo();
     }
     if (run && this.mode !== 'title') this.hud.update(run);
-    this.stage.frame(this.mode === 'paused' ? 0 : dt, settings.current.reducedMotion);
-    this.stage.render();
+    this.stage.frame(dt, settings.current.reducedMotion);
+    if (now < this.coveredFrom || this.redraw) this.stage.render();
+    this.redraw = false;
     if (this.mode === 'title') this.probeQuality(dt);
   };
 
@@ -328,11 +378,13 @@ export class Game {
       }
       case 'express-start': {
         audio.express();
+        this.coveredFrom = performance.now() + 300;
         const next = Math.max(run.level.landmarks.finishStreet + 1, run.street - Math.round((e.to - e.from) / LEVEL2.crossStreets.spacing));
         this.hud.showExpress(true, next);
         break;
       }
       case 'express-land':
+        this.coveredFrom = Infinity;
         audio.doors();
         this.hud.showExpress(false);
         this.hud.popup('BACK ON 7TH AVE', '#fff', true);
@@ -381,6 +433,7 @@ export class Game {
         if (!last) return;
         if (r.order) audio.register();
         else audio.sad();
+        audio.sleepSoon(2500);
       });
     };
     if (r.finished) {

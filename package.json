@@ -15,6 +15,7 @@
     "test:e2e": "playwright test",
     "screenshots": "node scripts/screenshots.ts",
     "perf": "node scripts/perf.ts",
+    "battery": "node scripts/battery.ts",
     "share-image": "node scripts/share-image.ts"
   },
   "engines": {

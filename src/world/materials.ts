@@ -1,6 +1,6 @@
 import {
-  AdditiveBlending, CanvasTexture, Color, DoubleSide, MeshBasicMaterial, MeshStandardMaterial, RepeatWrapping,
-  ShaderMaterial, SRGBColorSpace, type Texture,
+  AdditiveBlending, CanvasTexture, Color, DoubleSide, MeshBasicMaterial, MeshDepthMaterial, MeshStandardMaterial, RepeatWrapping,
+  ShaderMaterial, SRGBColorSpace, type InstancedMesh, type Mesh, type SkinnedMesh, type Texture,
 } from 'three';
 import { mulberry32 } from '../sim/rng.ts';
 import type { Atlas } from './atlas.ts';
@@ -11,6 +11,28 @@ export const sharedUniforms = {
   uTime: { value: 0 },
   uWindowGlow: { value: 1.0 },
 };
+
+const depthMaterials = new Map<string, MeshDepthMaterial>();
+
+/**
+ * Turns on shadows for a mesh. three.js draws every caster in the shadow pass with one shared depth
+ * material, so a mix of plain, instanced and skinned casters makes it re-pick a shader over and over.
+ * Instanced and skinned casters get a depth material of their own kind. Call it after any instance colors are set.
+ */
+export function castsShadow<T extends Mesh>(mesh: T): T {
+  mesh.castShadow = true;
+  const instanced = mesh as unknown as InstancedMesh;
+  const kind = (mesh as unknown as SkinnedMesh).isSkinnedMesh
+    ? 'skinned'
+    : instanced.isInstancedMesh
+      ? `instanced${instanced.instanceColor ? '+color' : ''}`
+      : null;
+  if (!kind) return mesh;
+  let depth = depthMaterials.get(kind);
+  if (!depth) depthMaterials.set(kind, (depth = new MeshDepthMaterial()));
+  mesh.customDepthMaterial = depth;
+  return mesh;
+}
 
 /** Low-poly props, vehicles, people: flat-shaded with baked vertex colors. */
 export function toyMaterial(): MeshStandardMaterial {
@@ -32,6 +54,9 @@ export function signMaterial(atlas: Atlas): MeshStandardMaterial {
     transparent: true,
     alphaTest: 0.35,
     side: DoubleSide,
+    // Signs are flat, so their back never overlaps their front: one pass, not three.js's default of
+    // drawing transparent two-sided meshes twice (and re-picking the shader for each half).
+    forceSinglePass: true,
     vertexColors: true,
   });
 }
@@ -331,9 +356,15 @@ function speckle(c: CanvasRenderingContext2D, s: number, n: number, seed: number
   }
 }
 
+/** Paints a texture the first time it's asked for and hands back the same one every run after. */
+function once(make: () => Texture): () => Texture {
+  let texture: Texture | null = null;
+  return () => (texture ??= make());
+}
+
 /** Concrete sidewalk: one texture tile = 3.2 m square = 2×2 slabs. The seams make speed readable. */
-export function sidewalkTexture(): Texture {
-  return canvasTexture(512, (c, s) => {
+export const sidewalkTexture = once(() =>
+  canvasTexture(512, (c, s) => {
     c.fillStyle = '#c9c1b4';
     c.fillRect(0, 0, s, s);
     const r = mulberry32(5);
@@ -358,12 +389,12 @@ export function sidewalkTexture(): Texture {
       c.fillRect(p, 0, 3, s);
       c.fillRect(0, p, s, 3);
     }
-  });
-}
+  }),
+);
 
 /** Asphalt: one tile = 8 m. */
-export function asphaltTexture(): Texture {
-  return canvasTexture(256, (c, s) => {
+export const asphaltTexture = once(() =>
+  canvasTexture(256, (c, s) => {
     c.fillStyle = '#55565c';
     c.fillRect(0, 0, s, s);
     speckle(c, s, 6000, 21, 0.22, false);
@@ -377,8 +408,8 @@ export function asphaltTexture(): Texture {
       c.lineTo(r() * s, r() * s);
       c.stroke();
     }
-  });
-}
+  }),
+);
 
 export function groundMaterial(map: Texture): MeshStandardMaterial {
   return new MeshStandardMaterial({ map, roughness: 0.95, metalness: 0, vertexColors: true });

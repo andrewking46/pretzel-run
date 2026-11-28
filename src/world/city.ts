@@ -4,9 +4,6 @@ import { deriveSeed, Rng } from '../sim/rng.ts';
 import { AWNING_WORDS, SQUARE_WORDS, STORE_WORDS, type Atlas } from './atlas.ts';
 import { MeshBuilder, QuadBuilder } from './builder.ts';
 import { STREET, toZ } from './layout.ts';
-import {
-  asphaltTexture, billboardMaterial, facadeMaterial, glowMaterial, groundMaterial, signMaterial, sidewalkTexture, toyMaterial,
-} from './materials.ts';
 
 // The city, generated one block ("chunk") at a time just ahead of the camera and dropped once behind it.
 // Every chunk is a handful of merged meshes: facades, props, glow, signs, ground, road, billboards.
@@ -49,6 +46,9 @@ export const PENN_DOOR = { d0: 1389.5, d1: 1399, height: 4.4, depth: 6 };
 /** every building is this deep, so corner faces line up with the cross-street walls behind them */
 const DEPTH = 24;
 
+/** Made once by the stage and shared by every run's city. `signals` is the sign material for the instanced walk signals. */
+export type CityMaterials = Record<'facade' | 'toy' | 'glow' | 'sign' | 'signals' | 'sidewalk' | 'road' | 'billboard', Material>;
+
 export class City {
   readonly group = new Group();
   private readonly defs: ChunkDef[];
@@ -59,30 +59,21 @@ export class City {
   private readonly signals = new Map<number, { matrix: Matrix4; phase: number }[]>();
   private readonly walk: InstancedMesh;
   private readonly hand: InstancedMesh;
-  private readonly mats: Record<'facade' | 'toy' | 'glow' | 'sign' | 'sidewalk' | 'road' | 'billboard', Material>;
+  private readonly mats: CityMaterials;
   private readonly seed: number;
   private job: { index: number; steps: Generator<void, Group> } | null = null;
 
-  /** `detail` = the full facade shader (relief, masonry, room interiors); off for the Low tier */
-  constructor(course: Course, atlas: Atlas, detail = true) {
+  constructor(course: Course, atlas: Atlas, mats: CityMaterials) {
     this.course = course;
     this.atlas = atlas;
     this.seed = deriveSeed(course.seed, 'city');
-    this.mats = {
-      facade: facadeMaterial(detail),
-      toy: toyMaterial(),
-      glow: glowMaterial(),
-      sign: signMaterial(atlas),
-      sidewalk: groundMaterial(sidewalkTexture()),
-      road: groundMaterial(asphaltTexture()),
-      billboard: billboardMaterial(),
-    };
+    this.mats = mats;
     const signal = (name: string) => {
       const [u0, v0, u1, v1] = atlas.uv(name);
       const g = new PlaneGeometry(0.36, 0.4);
       g.setAttribute('uv', new BufferAttribute(new Float32Array([u0, v0, u1, v0, u0, v1, u1, v1]), 2));
       g.setAttribute('color', new BufferAttribute(new Float32Array(12).fill(1.6), 3));
-      const m = new InstancedMesh(g, this.mats.sign, 32);
+      const m = new InstancedMesh(g, this.mats.signals, 32);
       m.count = 0;
       m.frustumCulled = false;
       this.group.add(m);
@@ -148,9 +139,10 @@ export class City {
 
   dispose(): void {
     for (const k of [...this.live.keys()]) this.drop(k);
-    for (const m of Object.values(this.mats)) m.dispose();
-    this.walk.geometry.dispose();
-    this.hand.geometry.dispose();
+    for (const signal of [this.walk, this.hand]) {
+      signal.geometry.dispose();
+      signal.dispose();
+    }
   }
 
   private drop(index: number): void {

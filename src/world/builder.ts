@@ -5,7 +5,6 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // Accumulates low-poly primitives with baked vertex colors into one merged geometry, so a whole
 // block's props (or one vehicle, or one obstacle) is a single draw call.
 
-const tmpColor = new Color();
 const m4 = new Matrix4();
 const q = new Quaternion();
 const e = new Euler();
@@ -13,6 +12,16 @@ const s = new Vector3();
 const p = new Vector3();
 
 export type ColorLike = string | number | Color;
+
+const parsed = new Map<string | number, Color>();
+
+/** A color, parsed once per distinct value: builders color thousands of vertices from a few dozen strings. */
+export function colorOf(color: ColorLike): Color {
+  if (color instanceof Color) return color;
+  let c = parsed.get(color);
+  if (!c) parsed.set(color, (c = new Color(color)));
+  return c;
+}
 
 /** Every part is merged indexed, so smooth shapes keep shared vertices and smooth normals. */
 function indexed(g: BufferGeometry): BufferGeometry {
@@ -23,13 +32,13 @@ function indexed(g: BufferGeometry): BufferGeometry {
 function colorize(g: BufferGeometry, color: ColorLike): BufferGeometry {
   const geo = indexed(g);
   geo.deleteAttribute('uv');
-  tmpColor.set(color);
+  const { r, g: green, b } = colorOf(color);
   const n = geo.attributes.position.count;
   const colors = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
-    colors[i * 3] = tmpColor.r;
-    colors[i * 3 + 1] = tmpColor.g;
-    colors[i * 3 + 2] = tmpColor.b;
+    colors[i * 3] = r;
+    colors[i * 3 + 1] = green;
+    colors[i * 3 + 2] = b;
   }
   geo.setAttribute('color', new BufferAttribute(colors, 3));
   return geo;
@@ -114,8 +123,8 @@ export class MeshBuilder {
       c.set(0, 0, 0);
       for (let v = 0; v < 3; v++) c.add(new Vector3().fromBufferAttribute(pos, t * 3 + v));
       c.divideScalar(3);
-      tmpColor.set(paint(t, c));
-      for (let v = 0; v < 3; v++) colors.set([tmpColor.r, tmpColor.g, tmpColor.b], (t * 3 + v) * 3);
+      const { r, g: green, b } = colorOf(paint(t, c));
+      for (let v = 0; v < 3; v++) colors.set([r, green, b], (t * 3 + v) * 3);
     }
     geo.setAttribute('color', new BufferAttribute(colors, 3));
     e.set(at.rx ?? 0, at.ry ?? 0, at.rz ?? 0);

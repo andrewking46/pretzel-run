@@ -1,6 +1,7 @@
 import { Bone, CapsuleGeometry, ConeGeometry, Group, Skeleton, SkinnedMesh, SphereGeometry, TorusGeometry, type BufferGeometry } from 'three';
 import { personMaterial, shade } from './people.ts';
 import { rigid, SkinBuilder } from './rig.ts';
+import { castsShadow } from '../world/materials.ts';
 
 // A small skinned dog (one draw call) that trots: diagonal legs in step, a bobbing head and a wagging tail.
 
@@ -69,7 +70,7 @@ export function buildDog(variant: number): Dog {
   const mesh = new SkinnedMesh(dogGeometry(kind), personMaterial());
   mesh.add(bones.body);
   mesh.bind(new Skeleton(BONES.map(n => bones[n])));
-  mesh.castShadow = true;
+  castsShadow(mesh);
   mesh.frustumCulled = false;
   const object = new Group();
   object.add(mesh);

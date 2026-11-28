@@ -32,6 +32,8 @@ export class Music {
 
   stop(): void {
     this.on = false;
+    clearInterval(this.timer ?? undefined);
+    this.timer = null;
   }
 
   private tick(): void {
@@ -39,7 +41,8 @@ export class Music {
     if (!this.on || !c) return;
     const spb = 60 / this.tempo / 4;
     while (this.next < c.currentTime + 0.12) {
-      this.play(this.step, this.next - c.currentTime);
+      // muted music keeps its place in the bar but doesn't build sounds nobody hears
+      if (this.audio.musicOn) this.play(this.step, this.next - c.currentTime);
       this.step++;
       this.next += spb;
     }

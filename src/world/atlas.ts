@@ -281,11 +281,7 @@ export interface Atlas {
 
 export function buildAtlas(): Atlas {
   const all = entries();
-  const size = 2048;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const c = canvas.getContext('2d')!;
+  const width = 2048;
   const rects = new Map<string, { x: number; y: number; w: number; h: number }>();
   // shelf packing, tallest first
   const order = Object.entries(all).sort((a, b) => b[1].h - a[1].h);
@@ -294,21 +290,30 @@ export function buildAtlas(): Atlas {
   let shelf = 0;
   const pad = 4;
   for (const [name, e] of order) {
-    if (x + e.w > size) {
+    if (x + e.w > width) {
       x = 0;
       y += shelf + pad;
       shelf = 0;
     }
+    rects.set(name, { x, y, w: e.w, h: e.h });
+    x += e.w + pad;
+    shelf = Math.max(shelf, e.h);
+  }
+  // only as tall as the packing needs (a power of two), not square: the signs fill under half of 2048 × 2048
+  const height = 2 ** Math.ceil(Math.log2(y + shelf));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const c = canvas.getContext('2d')!;
+  for (const [name, e] of order) {
+    const r = rects.get(name)!;
     c.save();
-    c.translate(x, y);
+    c.translate(r.x, r.y);
     c.beginPath();
     c.rect(0, 0, e.w, e.h);
     c.clip();
     e.draw(c, e.w, e.h);
     c.restore();
-    rects.set(name, { x, y, w: e.w, h: e.h });
-    x += e.w + pad;
-    shelf = Math.max(shelf, e.h);
   }
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
@@ -320,7 +325,7 @@ export function buildAtlas(): Atlas {
     uv(name) {
       const r = rects.get(name);
       if (!r) throw new Error(`atlas: no "${name}"`);
-      return [r.x / size, r.y / size, (r.x + r.w) / size, (r.y + r.h) / size];
+      return [r.x / width, r.y / height, (r.x + r.w) / width, (r.y + r.h) / height];
     },
     aspect(name) {
       const r = rects.get(name)!;
