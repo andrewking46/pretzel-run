@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatClock, formatMoney, nextTier, salesTax, stumbleLoss, tierFor, TIERS } from '../../src/sim/economy.ts';
+import { formatClock, formatMoney, nextOrder, orderFor, salesTax, stumbleLoss, TIERS } from '../../src/sim/economy.ts';
 
 describe('menu tiers', () => {
   it('match the posted prices with NYC tax', () => {
@@ -9,10 +9,10 @@ describe('menu tiers', () => {
       [2885, 256, 3141],
     ]);
     expect(TIERS[2].lines).toEqual([
-      { name: 'Original Pretzel x2', price: 1098 },
-      { name: 'Cinnamon Sugar Pretzel', price: 579 },
-      { name: 'Pretzel Nuggets', price: 729 },
-      { name: 'Original Lemonade', price: 479 },
+      { id: 'original', qty: 2, price: 1098 },
+      { id: 'cinnamon', qty: 1, price: 579 },
+      { id: 'nuggets', qty: 1, price: 729 },
+      { id: 'lemonade', qty: 1, price: 479 },
     ]);
   });
 
@@ -24,14 +24,41 @@ describe('menu tiers', () => {
   });
 
   it('picks the best tier the cash covers', () => {
-    expect(tierFor(597)).toBeNull();
-    expect(tierFor(598)?.stars).toBe(1);
-    expect(tierFor(1118)?.stars).toBe(1);
-    expect(tierFor(1119)?.stars).toBe(2);
-    expect(tierFor(3140)?.stars).toBe(2);
-    expect(tierFor(3141)?.stars).toBe(3);
-    expect(nextTier(1500)?.stars).toBe(3);
-    expect(nextTier(3141)).toBeNull();
+    expect(orderFor(597)).toBeNull();
+    expect(orderFor(598)?.stars).toBe(1);
+    expect(orderFor(1118)?.stars).toBe(1);
+    expect(orderFor(1119)?.stars).toBe(2);
+    expect(orderFor(3140)).toMatchObject({ stars: 2, extras: [] });
+    expect(orderFor(3141)).toMatchObject({ stars: 3, extras: [], total: 3141 });
+    expect(nextOrder(500)).toBe(TIERS[0]);
+    expect(nextOrder(1500)).toBe(TIERS[2]);
+  });
+
+  it("keeps ordering past Alex's Usual while the cash lasts", () => {
+    expect(orderFor(3847)?.extras).toEqual([]);
+    expect(orderFor(3848)).toMatchObject({ extras: ['dog'], subtotal: 3534, tax: 314, total: 3848 });
+    expect(orderFor(4810)).toMatchObject({
+      name: "Alex's Usual",
+      extras: ['dog', 'original'],
+      total: 4445,
+      lines: [
+        { id: 'original', qty: 3, price: 1647 },
+        { id: 'cinnamon', qty: 1, price: 579 },
+        { id: 'nuggets', qty: 1, price: 729 },
+        { id: 'dog', qty: 1, price: 649 },
+        { id: 'lemonade', qty: 1, price: 479 },
+      ],
+    });
+    expect(orderFor(7098)?.extras).toEqual(['dog', 'original', 'nuggets', 'lemonade', 'cinnamon', 'dog']);
+    expect(nextOrder(3141)).toMatchObject({ extras: ['dog'], total: 3848 });
+  });
+
+  it('never spends more than it has, and the next step up always costs more', () => {
+    for (let cash = 0; cash <= 12_000; cash++) {
+      const order = orderFor(cash);
+      if (order) expect(order.total).toBeLessThanOrEqual(cash);
+      expect(nextOrder(cash).total).toBeGreaterThan(cash);
+    }
   });
 });
 

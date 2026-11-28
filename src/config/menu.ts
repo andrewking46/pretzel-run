@@ -3,11 +3,13 @@
 export const TAX_RATE = 0.08875; // NYC combined sales tax
 export const TAX_LABEL = 'NYC tax 8.875%';
 
+/** In the order they print on a receipt. `short` is the register's abbreviation, used in the shared text. */
 export const ITEMS = {
-  original: { name: 'Original Pretzel', price: 549 },
-  lemonade: { name: 'Original Lemonade', price: 479 },
-  cinnamon: { name: 'Cinnamon Sugar Pretzel', price: 579 },
-  nuggets: { name: 'Pretzel Nuggets', price: 729 },
+  original: { name: 'Original Pretzel', short: 'Original', price: 549 },
+  cinnamon: { name: 'Cinnamon Sugar Pretzel', short: 'Cinnamon', price: 579 },
+  nuggets: { name: 'Pretzel Nuggets', short: 'Nuggets', price: 729 },
+  dog: { name: 'Pretzel Dog', short: 'Pretzel Dog', price: 649 },
+  lemonade: { name: 'Original Lemonade', short: 'Lemonade', price: 479 },
 } as const;
 
 export type ItemId = keyof typeof ITEMS;
@@ -32,3 +34,6 @@ export const ORDERS: readonly TierOrder[] = [
     ],
   },
 ];
+
+/** Cash left over after Alex's Usual buys one more thing at a time, in this order, round and round. */
+export const EXTRAS: readonly ItemId[] = ['dog', 'original', 'nuggets', 'lemonade', 'cinnamon'];

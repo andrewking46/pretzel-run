@@ -1,14 +1,17 @@
-import { ITEMS, ORDERS, TAX_RATE } from '../config/menu.ts';
+import { EXTRAS, ITEMS, ORDERS, TAX_RATE, type ItemId } from '../config/menu.ts';
 import { STUMBLE } from '../config/tuning.ts';
 
 export interface ReceiptLine {
-  name: string;
+  id: ItemId;
+  qty: number;
   price: number;
 }
 
-export interface Tier {
+export interface Order {
   stars: 1 | 2 | 3;
   name: string;
+  /** what spare cash added past the tier's own order, in the order it was added */
+  extras: ItemId[];
   lines: ReceiptLine[];
   subtotal: number;
   tax: number;
@@ -21,23 +24,41 @@ export function salesTax(cents: number, rate: number = TAX_RATE): number {
   return Math.floor((cents * perHundredThousand + 50_000) / 100_000);
 }
 
-export const TIERS: readonly Tier[] = ORDERS.map(order => {
-  const lines = order.items.map(({ id, qty }) => ({
-    name: qty > 1 ? `${ITEMS[id].name} x${qty}` : ITEMS[id].name,
-    price: ITEMS[id].price * qty,
-  }));
+type Counts = Partial<Record<ItemId, number>>;
+
+function priced(stars: Order['stars'], name: string, extras: ItemId[], counts: Counts): Order {
+  const lines = (Object.keys(ITEMS) as ItemId[])
+    .filter(id => counts[id])
+    .map(id => ({ id, qty: counts[id]!, price: ITEMS[id].price * counts[id]! }));
   const subtotal = lines.reduce((sum, l) => sum + l.price, 0);
   const tax = salesTax(subtotal);
-  return { stars: order.stars, name: order.name, lines, subtotal, tax, total: subtotal + tax };
-});
-
-/** The best order this much cash pays for, or null if it won't cover the cheapest. */
-export function tierFor(cash: number): Tier | null {
-  return [...TIERS].reverse().find(t => cash >= t.total) ?? null;
+  return { stars, name, extras, lines, subtotal, tax, total: subtotal + tax };
 }
 
-export function nextTier(cash: number): Tier | null {
-  return TIERS.find(t => cash < t.total) ?? null;
+const countsOf = (items: readonly { id: ItemId; qty: number }[]): Counts => Object.fromEntries(items.map(i => [i.id, i.qty]));
+
+export const TIERS: readonly Order[] = ORDERS.map(o => priced(o.stars, o.name, [], countsOf(o.items)));
+
+/** The same order with the next item from the extras list added. */
+function withExtra(order: Order): Order {
+  const id = EXTRAS[order.extras.length % EXTRAS.length];
+  const counts = countsOf(order.lines);
+  counts[id] = (counts[id] ?? 0) + 1;
+  return priced(order.stars, order.name, [...order.extras, id], counts);
+}
+
+/** The best tier this much cash pays for, or null if it won't cover the cheapest. Past Alex's Usual, spare cash keeps ordering. */
+export function orderFor(cash: number): Order | null {
+  let order = [...TIERS].reverse().find(t => cash >= t.total) ?? null;
+  if (order?.stars !== 3) return order;
+  for (let more = withExtra(order); more.total <= cash; more = withExtra(more)) order = more;
+  return order;
+}
+
+/** One step up from what this cash buys: the next tier, or Alex's Usual with one more thing. */
+export function nextOrder(cash: number): Order {
+  const order = orderFor(cash);
+  return order?.stars === 3 ? withExtra(order) : TIERS.find(t => cash < t.total)!;
 }
 
 /** Cash knocked loose by a stumble: 20%, rounded to 25¢, at least 25¢, never more than you have. */

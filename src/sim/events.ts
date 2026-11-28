@@ -1,11 +1,12 @@
 import type { Coin, Obstacle, Powerup } from './course.ts';
-import type { Tier } from './economy.ts';
+import type { Order } from './economy.ts';
 import type { Action } from './player.ts';
 
 export interface RunResult {
   finished: boolean;
   stars: 0 | 1 | 2 | 3;
-  tier: Tier | null;
+  /** what the cash bought, null when it ran short or the batch sold out */
+  order: Order | null;
   cash: number;
   timeLeft: number;
   stumbles: number;

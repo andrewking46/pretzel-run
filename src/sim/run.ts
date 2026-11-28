@@ -2,7 +2,7 @@ import { COINS, NEAR_MISS, PLAYER, POWERUPS, RUN, SIM_DT, baseSpeed } from '../c
 import type { LevelConfig } from '../config/levels/types.ts';
 import { hitsObstacle, overlapsLaterally, reachesCoin, reachesPowerup } from './collisions.ts';
 import { clearanceOf, generateCourse, isTall, type Coin, type Course, type Obstacle, type Powerup } from './course.ts';
-import { stumbleLoss, tierFor } from './economy.ts';
+import { orderFor, stumbleLoss } from './economy.ts';
 import type { RunResult, SimEvent } from './events.ts';
 import { Player, type Action } from './player.ts';
 
@@ -325,12 +325,12 @@ export class Run {
 
   private complete(): void {
     const finished = this.mode === 'finish';
-    const tier = finished ? tierFor(this.cash) : null;
+    const order = finished ? orderFor(this.cash) : null;
     const pool = this.course.pool;
     this.result = {
       finished,
-      stars: tier ? tier.stars : 0,
-      tier,
+      stars: order ? order.stars : 0,
+      order,
       cash: this.cash,
       timeLeft: finished ? this.timeLeft : 0,
       stumbles: this.stumbles,

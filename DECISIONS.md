@@ -50,7 +50,8 @@ Non-obvious choices and why. Newest at the bottom of each section.
 - **Alex wears a navy suit, white shirt, red tie and brown dress shoes**, with brown hair, brown eyes and fair skin (he works in finance).
 - **Today's Run uses New York's date** (`America/New_York`), so relatives in other time zones get the same route on the same day.
 - **Share sheet on phones, clipboard on computers.** Desktop browsers also expose `navigator.share`, which would turn "Copy for the group chat" into a share sheet on a Mac.
-- **Shares carry the link.** The share sheet gets the game's URL as its own field and the clipboard gets it on the last line, so Messages turns it into the preview card instead of sending bare text.
+- **The share is a register receipt, as plain text, with no link.** Amounts drop the "$" like a real receipt (which also keeps iOS from underlining them) and sit flush right on dot leaders, padded with hair spaces. The padding is measured on the sender's device in the system font at 17 pt, the size Messages uses. Every line ends by 164 pt, so nothing wraps on a 375-pt phone in a group chat even at the largest standard text size (23 pt). Accessibility text sizes (28 pt and up) will wrap, and at sizes other than 17 pt, or in other fonts, the column drifts by a few points.
+- **Spare cash keeps ordering.** Past Alex's Usual, each extra item is added in a fixed order (Pretzel Dog, Original, Nuggets, Lemonade, Cinnamon, then around again) as long as the cash covers it with tax, so better runs get longer receipts and the receipt says what the next item would take. Stars still top out at three. A fixed order keeps the receipts of one day's run comparable across the family.
 - **Control hint only on the first run**, worded for the device you're using.
 - **No real brands**: see CREDITS.md.
 

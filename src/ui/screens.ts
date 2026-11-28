@@ -1,6 +1,6 @@
 import { QUIPS } from '../config/copy.ts';
-import { TAX_LABEL } from '../config/menu.ts';
-import { formatClock, formatMoney, nextTier, TIERS } from '../sim/economy.ts';
+import { ITEMS, TAX_LABEL } from '../config/menu.ts';
+import { formatClock, formatMoney, nextOrder, TIERS, type Order, type ReceiptLine } from '../sim/economy.ts';
 import type { RunResult } from '../sim/events.ts';
 import { pretzelDataUrl } from './icons.ts';
 import { settings, type QualityChoice } from './settings.ts';
@@ -69,7 +69,7 @@ export class Screens {
   result(r: RunResult, onLine: (i: number, last: boolean) => void): void {
     const stars = r.stars;
     $('rStars').innerHTML = [0, 1, 2].map(i => `<span class="${i < stars ? '' : 'off'}">★</span>`).join('');
-    $('rVerdict').textContent = !r.finished ? 'Sold out!' : r.tier ? r.tier.name : 'Not enough cash';
+    $('rVerdict').textContent = !r.finished ? 'Sold out!' : r.order ? orderName(r.order) : 'Not enough cash';
     const pool = !r.finished ? QUIPS.sold : QUIPS[stars as 0 | 1 | 2 | 3];
     let quip: string = pool[Math.floor(Math.random() * pool.length)];
     if (!r.finished) quip += ` He only made it to W ${r.street} St.`;
@@ -142,6 +142,16 @@ export class Screens {
   }
 }
 
+const orderName = (o: Order) => (o.extras.length ? `${o.name} + ${o.extras.length} more` : o.name);
+
+const itemName = (l: ReceiptLine) => (l.qty > 1 ? `${ITEMS[l.id].name} x${l.qty}` : ITEMS[l.id].name);
+
+/** The next step up, as in "$2.10 short of …": a tier's name, or "+1" and the item Alex would add. */
+function upgradeName(next: Order): string {
+  const added = next.extras.at(-1);
+  return added ? `+1 ${ITEMS[added].name}` : next.name;
+}
+
 function receiptLines(r: RunResult): string[] {
   const now = new Date();
   const ln = (a: string, b: string, cls = '') => `<div class="ln ${cls}"><span>${a}</span><span>${b}</span></div>`;
@@ -153,18 +163,18 @@ function receiptLines(r: RunResult): string[] {
   ];
   if (!r.finished) {
     out.push(`<div class="c bad">FRESH BATCH: SOLD OUT</div>`, `<div class="dash"></div>`, ln('CASH IN POCKET', formatMoney(r.cash)));
-  } else if (!r.tier) {
+  } else if (!r.order) {
     const t = TIERS[0];
-    out.push(ln(t.lines[0].name, formatMoney(t.lines[0].price)), ln(TAX_LABEL, formatMoney(t.tax)), `<div class="dash"></div>`);
+    out.push(ln(itemName(t.lines[0]), formatMoney(t.lines[0].price)), ln(TAX_LABEL, formatMoney(t.tax)), `<div class="dash"></div>`);
     out.push(ln('TOTAL', formatMoney(t.total), 'tot'), ln('CASH', formatMoney(r.cash)), `<div class="c bad">*** DECLINED ***</div>`);
     out.push(`<div class="c note">${formatMoney(t.total - r.cash)} short of ${t.name}</div>`);
   } else {
-    const t = r.tier;
-    for (const l of t.lines) out.push(ln(l.name, formatMoney(l.price)));
+    const t = r.order;
+    for (const l of t.lines) out.push(ln(itemName(l), formatMoney(l.price)));
     out.push(`<div class="dash"></div>`, ln('Subtotal', formatMoney(t.subtotal)), ln(TAX_LABEL, formatMoney(t.tax)));
     out.push(ln('TOTAL', formatMoney(t.total), 'tot'), ln('CASH', formatMoney(r.cash)), ln('CHANGE', formatMoney(r.cash - t.total)));
-    const next = nextTier(r.cash);
-    if (next) out.push(`<div class="dash"></div>`, `<div class="c note">${formatMoney(next.total - r.cash)} short of ${next.name}</div>`);
+    const next = nextOrder(r.cash);
+    out.push(`<div class="dash"></div>`, `<div class="c note">${formatMoney(next.total - r.cash)} short of ${upgradeName(next)}</div>`);
   }
   out.push(`<div class="dash"></div>`, `<div class="c note">THANK YOU · COME BACK HUNGRY</div>`);
   return out;
